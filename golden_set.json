@@ -1,0 +1,9 @@
+{
+  "casos": [
+    {"pregunta": "¿Se puede saltear el carrito?", "documento_id_esperado": "adr-cart-price.md"},
+    {"pregunta": "¿Cuándo se reserva el stock?", "documento_id_esperado": "adr-stock-reserve.md"},
+    {"pregunta": "¿La promo vale después del carrito?", "documento_id_esperado": "adr-promo-at-cart.md"},
+    {"pregunta": "¿Los cambios de checkout en Cyber quedan prendidos?", "documento_id_esperado": "adr-cyber-flags.md"},
+    {"pregunta": "¿Cuándo arranca el plazo de devolución?", "documento_id_esperado": "adr-returns-window.md"}
+  ]
+}

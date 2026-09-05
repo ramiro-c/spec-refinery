@@ -20,3 +20,6 @@ CHROMA_DIR = BASE_DIR / ".chroma"
 MAX_STEPS = 8
 RECURSION_LIMIT = 20
 TOP_K = 5
+EMBEDDING_MODEL = _env_str("EMBEDDING_MODEL", "sentence-transformers/all-MiniLM-L6-v2")
+PINECONE_API_KEY = os.getenv("PINECONE_API_KEY")
+INDEX_NAME = _env_str("INDEX_NAME", "spec-refinery-rag")
