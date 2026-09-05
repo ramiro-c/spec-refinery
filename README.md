@@ -32,7 +32,7 @@ Variables útiles:
 |----------|---------|-----|
 | `SPEC_REFINERY_API` | `http://127.0.0.1:8000` | URL de la API para Streamlit |
 | `LLM_PROVIDER` | `gemini` | `gemini` (Vertex/ADC) u `openrouter` |
-| `VECTOR_BACKEND` | `chroma` | `chroma` local o `pinecone` |
+| `VECTOR_BACKEND` | `chroma` | `chroma` local o `pinecone` (Pinecone requiere `pip install pinecone pinecone-text` si usás ese backend) |
 
 ## Grafo (un turno)
 

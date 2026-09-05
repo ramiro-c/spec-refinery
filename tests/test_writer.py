@@ -2,15 +2,16 @@
 
 from __future__ import annotations
 
+from langchain_core.messages import HumanMessage
 from langchain_core.runnables import Runnable, RunnableLambda
 
 from agents.writer import writer_turn
-from schemas import AcceptanceCriterion, SpecDocument, SpecStatus
+from schemas import SpecDocument
 from scoring import CYBER_TICKET
 from state import empty_spec, initial_fields
 
 
-def _modelo_llm_fake(salida: dict):
+def _modelo_llm_fake(salida: dict, *, capturar=None):
     """LLM fake que devuelve SpecDocument vía with_structured_output."""
 
     class _ChatModelFake(Runnable):
@@ -19,6 +20,8 @@ def _modelo_llm_fake(salida: dict):
 
         def with_structured_output(self, schema):
             def _structured_invoke(mensajes, config=None, **kwargs):
+                if capturar is not None:
+                    capturar["mensajes"] = mensajes
                 return schema.model_validate(salida)
 
             return RunnableLambda(_structured_invoke)
@@ -70,3 +73,36 @@ def test_writer_close_requested_vacia_preguntas():
     out = writer_turn(state, modelo)
 
     assert out["spec"].preguntas == []
+
+
+def test_writer_ve_respuesta_pm_y_spec_anterior():
+    """El prompt incluye el follow-up del PM y la spec previa."""
+    capturar: dict = {}
+    respuesta_pm = "para todo, no medimos"
+    modelo = _modelo_llm_fake(
+        {
+            "pedido": "x",
+            "que_entendimos": f"Entendimos: {respuesta_pm}",
+            "criterios": [],
+            "preguntas": [],
+            "estado": {"se_puede_cerrar": False, "vaguedad": 1, "razon": "llm"},
+        },
+        capturar=capturar,
+    )
+    prior = empty_spec(CYBER_TICKET)
+    prior.que_entendimos = "Versión anterior."
+    state = {
+        **initial_fields(CYBER_TICKET),
+        "messages": [
+            HumanMessage(content=CYBER_TICKET),
+            HumanMessage(content=respuesta_pm),
+        ],
+        "spec": prior,
+        "questions": ["¿medimos?"],
+    }
+    out = writer_turn(state, modelo)
+
+    human_msg = capturar["mensajes"][-1].content
+    assert respuesta_pm in human_msg
+    assert "Versión anterior." in human_msg
+    assert out["spec"].que_entendimos == f"Entendimos: {respuesta_pm}"

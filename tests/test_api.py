@@ -4,7 +4,6 @@ from __future__ import annotations
 
 import pytest
 from fastapi.testclient import TestClient
-from langchain_core.messages import HumanMessage
 
 from checkpoint import create_checkpointer
 from graph import build_graph
@@ -92,3 +91,8 @@ def test_start_continue_close_and_unknown_thread(client: TestClient):
 
     missing = client.post("/threads/does-not-exist/messages", json={"content": "hola"})
     assert missing.status_code == 404
+    assert missing.json() == {"detail": "thread no existe"}
+
+    missing_close = client.post("/threads/does-not-exist/close")
+    assert missing_close.status_code == 404
+    assert missing_close.json() == {"detail": "thread no existe"}

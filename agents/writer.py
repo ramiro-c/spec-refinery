@@ -10,9 +10,34 @@ from scoring import vaguedad_score
 from state import RefineryState, empty_spec
 
 WRITER_PROMPT = """Sos el redactor de specs de la refinería.
-Reescribí que_entendimos y criterios según el ticket, citations y preguntas.
-No inventes reglas que no estén en las citations. Pedido y preguntas los fija el sistema.
+Reescribí que_entendimos y criterios según el ticket, mensajes del PM, spec anterior,
+citations y preguntas. No inventes reglas que no estén en las citations.
+Pedido y preguntas los fija el sistema.
 """
+
+
+def _message_text(message) -> str:
+    content = getattr(message, "content", message)
+    if isinstance(content, str):
+        return content
+    if isinstance(content, list):
+        parts: list[str] = []
+        for block in content:
+            if isinstance(block, str):
+                parts.append(block)
+            elif isinstance(block, dict) and block.get("type") == "text":
+                parts.append(str(block.get("text") or ""))
+        return "\n".join(p for p in parts if p)
+    return str(content)
+
+
+def _human_texts(messages: list) -> list[str]:
+    """Todos los mensajes humanos acumulados en el hilo."""
+    return [
+        _message_text(message)
+        for message in messages or []
+        if getattr(message, "type", None) == "human"
+    ]
 
 
 def writer_turn(state: RefineryState, llm: BaseChatModel | None = None) -> dict:
@@ -33,12 +58,18 @@ def writer_turn(state: RefineryState, llm: BaseChatModel | None = None) -> dict:
             razon="sin LLM",
         )
     else:
+        human_lines = _human_texts(state.get("messages") or [])
+        prior = state.get("spec")
+        prior_text = prior.model_dump_json(indent=2) if prior is not None else "(ninguna)"
+        pm_block = "\n".join(f"- {line}" for line in human_lines) if human_lines else "(ninguno)"
         draft = llm.with_structured_output(SpecDocument).invoke(
             [
                 SystemMessage(content=WRITER_PROMPT),
                 HumanMessage(
                     content=(
                         f"Ticket: {ticket}\n"
+                        f"Mensajes del PM:\n{pm_block}\n"
+                        f"Spec anterior:\n{prior_text}\n"
                         f"Citations: {[c.document_id for c in citations]}\n"
                         f"Preguntas: {questions}"
                     )

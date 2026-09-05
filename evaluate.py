@@ -9,10 +9,10 @@ import json
 import sys
 from pathlib import Path
 
+from config import TOP_K
 from retriever import retrieve
 
 GOLDEN_PATH = Path(__file__).resolve().parent / "golden_set.json"
-TOP_K = 5
 UMBRAL_ACIERTOS = 4
 
 

@@ -87,6 +87,14 @@ def invoke_config(thread_id: str | None = None) -> dict:
     return config
 
 
+def _has_checkpoint(graph: CompiledStateGraph, config: dict) -> bool:
+    """True si el hilo ya tiene estado persistido."""
+    checkpointer = graph.checkpointer
+    if checkpointer is None:
+        return False
+    return checkpointer.get_tuple(config) is not None
+
+
 def run_turn(
     graph: CompiledStateGraph,
     ticket: str,
@@ -96,11 +104,26 @@ def run_turn(
     close_requested: bool = False,
 ) -> tuple[list[str], dict]:
     """Corre un turno en stream: hops de nodos + estado final."""
+    config = invoke_config(thread_id)
+    if _has_checkpoint(graph, config):
+        # Continuación: no pisar spec ni otros campos del checkpoint.
+        inputs = {
+            "messages": messages,
+            "close_requested": close_requested,
+            "ticket": ticket,
+            "citations": [],
+            "questions": [],
+            "step_count": 0,
+            "last_error": "",
+        }
+    else:
+        inputs = {**initial_fields(ticket, close_requested=close_requested), "messages": messages}
+
     hops: list[str] = []
     final: dict | None = None
     for mode, data in graph.stream(
-        {**initial_fields(ticket, close_requested=close_requested), "messages": messages},
-        invoke_config(thread_id),
+        inputs,
+        config,
         stream_mode=["updates", "values"],
     ):
         if mode == "updates":

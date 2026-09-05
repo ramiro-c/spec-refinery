@@ -43,3 +43,14 @@ def test_rubric_caps_steps():
         close_requested=False,
         last_error="",
     ) == "FINISH"
+
+
+def test_rubric_finishes_on_last_error():
+    assert apply_rubric(
+        citations_empty=False,
+        questions_empty=False,
+        step_count=1,
+        proposed="retriever",
+        close_requested=False,
+        last_error="boom",
+    ) == "FINISH"

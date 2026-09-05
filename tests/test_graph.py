@@ -1,7 +1,6 @@
 from langchain_core.messages import HumanMessage
 from schemas import Citation
 from scoring import CYBER_TICKET
-from state import initial_fields
 from graph import build_graph, run_turn
 
 

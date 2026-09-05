@@ -77,13 +77,12 @@ def _message_text(message: Any) -> str:
 
 
 def _user_query(messages: list) -> str:
-    """Primera pregunta humana: la consulta original, no el ruido del grafo."""
-    for message in messages:
+    """Última pregunta humana: la consulta más reciente, no el ruido del grafo."""
+    last = ""
+    for message in messages or []:
         if getattr(message, "type", None) == "human":
-            return _message_text(message)
-    if messages:
-        return _message_text(messages[0])
-    return ""
+            last = _message_text(message)
+    return last
 
 
 def _snapshot(state: RefineryState) -> str:
