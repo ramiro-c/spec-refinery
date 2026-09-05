@@ -9,43 +9,17 @@ from langchain_core.messages import HumanMessage
 from langgraph.graph.state import CompiledStateGraph
 from pydantic import BaseModel
 
-from agents.intake import make_intake_node
-from agents.retriever_node import make_retriever_node
-from agents.writer import make_writer_node
 from checkpoint import open_checkpointer
 from graph import build_graph, invoke_config, run_turn
 from schemas import SpecDocument
-from state import RefineryState
 
 app = FastAPI()
 
 _graph: CompiledStateGraph | None = None
 
 
-def _rubric_supervisor(state: RefineryState) -> dict:
-    """Supervisor determinístico por rúbrica (provisional hasta factory LLM en task 9)."""
-    from agents.supervisor import apply_rubric
-
-    step = int(state.get("step_count") or 0) + 1
-    nxt = apply_rubric(
-        citations_empty=not state.get("citations"),
-        questions_empty=not state.get("questions"),
-        step_count=step,
-        proposed="FINISH",
-        close_requested=bool(state.get("close_requested")),
-        last_error=state.get("last_error") or "",
-    )
-    return {"next_agent": nxt, "step_count": step, "last_agent": "supervisor"}
-
-
 def _build_default_graph() -> CompiledStateGraph:
-    return build_graph(
-        supervisor=_rubric_supervisor,
-        retriever=make_retriever_node(),
-        intake=make_intake_node(),
-        writer=make_writer_node(None),
-        checkpointer=open_checkpointer(),
-    )
+    return build_graph(checkpointer=open_checkpointer())
 
 
 def get_graph() -> CompiledStateGraph:

@@ -9,11 +9,16 @@ from __future__ import annotations
 from collections.abc import Callable
 from typing import Literal
 
+from langchain_core.language_models import BaseChatModel
 from langgraph.checkpoint.base import BaseCheckpointSaver
 from langgraph.graph import END, START, StateGraph
 from langgraph.graph.state import CompiledStateGraph
 
+from agents.intake import make_intake_node
+from agents.retriever_node import make_retriever_node
 from agents.retry import NODE_RETRY, node_error_handler
+from agents.supervisor import make_supervisor_node
+from agents.writer import make_writer_node
 from config import RECURSION_LIMIT
 from state import RefineryState, initial_fields
 
@@ -31,12 +36,25 @@ def route_from_supervisor(state: RefineryState) -> Route:
 
 def build_graph(
     *,
-    supervisor: NodeFn,
-    retriever: NodeFn,
-    intake: NodeFn,
-    writer: NodeFn,
+    supervisor: NodeFn | None = None,
+    retriever: NodeFn | None = None,
+    intake: NodeFn | None = None,
+    writer: NodeFn | None = None,
     checkpointer: BaseCheckpointSaver | None = None,
+    llm: BaseChatModel | None = None,
 ) -> CompiledStateGraph:
+    """Arma el grafo. Sin nodos explícitos, usa factory LLM (supervisor + writer)."""
+    if supervisor is None or writer is None:
+        if llm is None:
+            from clients.factory import build_role_models
+
+            models = build_role_models()
+        else:
+            models = {"supervisor": llm, "writer": llm}
+        supervisor = supervisor or make_supervisor_node(models["supervisor"])
+        writer = writer or make_writer_node(models["writer"])
+    retriever = retriever or make_retriever_node()
+    intake = intake or make_intake_node()
     builder = StateGraph(RefineryState)
     builder.set_node_defaults(
         retry_policy=NODE_RETRY,

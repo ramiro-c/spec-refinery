@@ -1,5 +1,11 @@
 from __future__ import annotations
+
+from typing import Literal
+
 from pydantic import BaseModel, Field
+
+ProviderName = Literal["gemini", "openrouter"]
+RoleName = Literal["supervisor", "writer"]
 
 class Citation(BaseModel):
     document_id: str

@@ -12,6 +12,9 @@ def _env_str(name: str, default: str) -> str:
         return default
     return raw.strip()
 
+GEMINI_API_KEY = os.getenv("GEMINI_API_KEY")
+OPENROUTER_API_KEY = os.getenv("OPENROUTER_API_KEY")
+
 LLM_PROVIDER = _env_str("LLM_PROVIDER", "gemini")
 VECTOR_BACKEND = _env_str("VECTOR_BACKEND", "chroma")
 CHECKPOINT_PATH = _env_str("CHECKPOINT_PATH", str(BASE_DIR / "checkpoints.sqlite"))

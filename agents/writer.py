@@ -4,9 +4,8 @@ from __future__ import annotations
 
 from langchain_core.language_models import BaseChatModel
 from langchain_core.messages import AIMessage, HumanMessage, SystemMessage
-from pydantic import BaseModel
 
-from schemas import AcceptanceCriterion, SpecStatus
+from schemas import SpecDocument, SpecStatus
 from scoring import vaguedad_score
 from state import RefineryState, empty_spec
 
@@ -14,11 +13,6 @@ WRITER_PROMPT = """Sos el redactor de specs de la refinería.
 Reescribí que_entendimos y criterios según el ticket, citations y preguntas.
 No inventes reglas que no estén en las citations. Pedido y preguntas los fija el sistema.
 """
-
-
-class WriterOutput(BaseModel):
-    que_entendimos: str
-    criterios: list[AcceptanceCriterion]
 
 
 def writer_turn(state: RefineryState, llm: BaseChatModel | None = None) -> dict:
@@ -39,7 +33,7 @@ def writer_turn(state: RefineryState, llm: BaseChatModel | None = None) -> dict:
             razon="sin LLM",
         )
     else:
-        draft = llm.with_structured_output(WriterOutput).invoke(
+        draft = llm.with_structured_output(SpecDocument).invoke(
             [
                 SystemMessage(content=WRITER_PROMPT),
                 HumanMessage(
@@ -51,9 +45,8 @@ def writer_turn(state: RefineryState, llm: BaseChatModel | None = None) -> dict:
                 ),
             ]
         )
+        spec = draft
         spec.pedido = ticket
-        spec.que_entendimos = draft.que_entendimos
-        spec.criterios = list(draft.criterios)
         spec.choques = list(citations)
         spec.preguntas = [] if close_requested else list(questions)
         spec.estado = SpecStatus(
