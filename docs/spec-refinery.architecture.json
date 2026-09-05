@@ -1,0 +1,159 @@
+{
+  "schema_version": 1,
+  "diagram_type": "architecture",
+  "meta": {
+    "title": "Spec Refinery — Arquitectura",
+    "output": "grafo.html",
+    "quality_profile": "showcase",
+    "views": [
+      {
+        "id": "request-path",
+        "label": "Camino del PM",
+        "focus": ["streamlit", "api", "supervisor", "writer"],
+        "note": "Streamlit habla con la API; el grafo termina en writer con la spec."
+      },
+      {
+        "id": "rag-path",
+        "label": "RAG híbrido",
+        "focus": ["supervisor", "retriever", "chroma", "intake"],
+        "note": "Sin docs el supervisor manda al retriever; intake arma las preguntas."
+      }
+    ]
+  },
+  "components": [
+    {
+      "id": "streamlit",
+      "type": "frontend",
+      "label": "Streamlit",
+      "sublabel": "ui.py :8501",
+      "pos": [40, 200],
+      "size": [130, 60]
+    },
+    {
+      "id": "api",
+      "type": "backend",
+      "label": "FastAPI",
+      "sublabel": "app.py :8000",
+      "pos": [230, 200],
+      "size": [130, 60]
+    },
+    {
+      "id": "supervisor",
+      "type": "backend",
+      "label": "Supervisor",
+      "sublabel": "rúbrica + ruteo",
+      "pos": [420, 200],
+      "size": [130, 60]
+    },
+    {
+      "id": "retriever",
+      "type": "backend",
+      "label": "Retriever",
+      "sublabel": "BM25 + RRF",
+      "pos": [640, 80],
+      "size": [130, 60]
+    },
+    {
+      "id": "intake",
+      "type": "backend",
+      "label": "Intake",
+      "sublabel": "cuentas + top 3",
+      "pos": [640, 200],
+      "size": [130, 60]
+    },
+    {
+      "id": "writer",
+      "type": "backend",
+      "label": "Writer",
+      "sublabel": "spec por turno",
+      "pos": [640, 320],
+      "size": [130, 60]
+    },
+    {
+      "id": "chroma",
+      "type": "database",
+      "label": "Chroma",
+      "sublabel": ".chroma local",
+      "pos": [860, 80],
+      "size": [130, 60]
+    }
+  ],
+  "boundaries": [
+    {
+      "kind": "region",
+      "label": "LangGraph (un turno)",
+      "wraps": ["supervisor", "retriever", "intake", "writer"]
+    }
+  ],
+  "connections": [
+    {
+      "id": "ui-to-api",
+      "from": "streamlit",
+      "to": "api",
+      "label": "HTTP REST",
+      "variant": "emphasis"
+    },
+    {
+      "id": "api-to-supervisor",
+      "from": "api",
+      "to": "supervisor",
+      "label": "run_turn"
+    },
+    {
+      "id": "supervisor-to-retriever",
+      "from": "supervisor",
+      "to": "retriever",
+      "label": "sin docs",
+      "fromSide": "top",
+      "toSide": "left",
+      "labelDy": -58
+    },
+    {
+      "id": "supervisor-to-intake",
+      "from": "supervisor",
+      "to": "intake",
+      "label": "con docs"
+    },
+    {
+      "id": "supervisor-to-writer",
+      "from": "supervisor",
+      "to": "writer",
+      "label": "cerrar",
+      "fromSide": "bottom",
+      "toSide": "left",
+      "labelDy": 58
+    },
+    {
+      "id": "retriever-to-chroma",
+      "from": "retriever",
+      "to": "chroma",
+      "label": "RAG híbrido"
+    }
+  ],
+  "cards": [
+    {
+      "dot": "cyan",
+      "title": "Piel vs sistema",
+      "items": [
+        "Streamlit es la pantalla; FastAPI es el sistema",
+        "Tres endpoints: empezar, seguir, cerrar"
+      ]
+    },
+    {
+      "dot": "emerald",
+      "title": "Grafo por turno",
+      "items": [
+        "Supervisor elige retriever, intake o writer",
+        "Writer reescribe las 7 cajas de la spec"
+      ]
+    },
+    {
+      "dot": "rose",
+      "title": "Corpus",
+      "items": [
+        "Chroma local con 11 docs Andes",
+        "BM25 + embeddings + RRF en el retriever"
+      ]
+    }
+  ]
+}
