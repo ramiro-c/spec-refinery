@@ -145,18 +145,9 @@ def retrieve(
 ) -> list[Citation]:
     """Recupera top-k citas. Tests inyectan stubs; producción usa EnsembleRetriever."""
     if lexical is not None and semantic is not None:
-        seen: set[str] = set()
-        out: list[Citation] = []
-        for block in (lexical.invoke(query), semantic.invoke(query)):
-            for doc in block:
-                cit = _as_citation(doc)
-                if not cit.document_id or cit.document_id in seen:
-                    continue
-                seen.add(cit.document_id)
-                out.append(cit)
-                if len(out) >= top_k:
-                    return out
-        return out
+        # Stubs de test: concatena léxico + semántico y reutiliza dedupe de citas.
+        docs = list(lexical.invoke(query)) + list(semantic.invoke(query))
+        return _docs_to_citations(docs, top_k)
 
     docs = _production_retriever().invoke(query)
     return _docs_to_citations(docs, top_k)
