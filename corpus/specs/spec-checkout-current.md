@@ -13,4 +13,4 @@ El checkout vigente en Marketplace Andes sigue cuatro etapas secuenciales. Ningu
 
 **Confirmación** — Pago aprobado: el `checkout-api` emite la orden y muestra resumen al buyer. A partir de ahí operan logística, entrega y eventualmente `returns-service`.
 
-Este flujo es la línea base fuera de Cyber; durante Cyber pueden activarse flags que modifiquen UI o tiempos, pero la secuencia lógica se mantiene.
+Este flujo es la línea base fuera de Cyber Monday; durante Cyber Monday pueden activarse flags que modifiquen UI o tiempos, pero la secuencia lógica se mantiene.

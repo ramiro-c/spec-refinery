@@ -7,4 +7,4 @@ El `inventory-service` reserva unidades cuando un ítem entra al carrito del buy
 
 La reserva tiene TTL acorde a la sesión; si el carrito expira o el buyer abandona, el stock vuelve al pool disponible. El checkout no crea reservas nuevas: solo consume las que el carrito ya registró con `inventory-service`.
 
-Esta regla equilibra disponibilidad real durante Cyber y evita overselling en el último click.
+Esta regla equilibra disponibilidad real durante Cyber Monday y evita overselling en el último click.

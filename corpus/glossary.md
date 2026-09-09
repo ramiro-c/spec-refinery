@@ -9,6 +9,6 @@ title: Glosario Marketplace Andes
 
 **Comprar ahora** — Atajo que lleva al buyer hacia checkout con los ítems ya elegidos, sin pasar por una vista intermedia de carrito vacío. No elimina pasos obligatorios de envío ni de pago; solo acorta navegación.
 
-**Cyber** — Ventana comercial de alto tráfico con flags, banners y reglas de promo especiales. Fuera de Cyber, esos comportamientos deben estar apagados.
+**Cyber Monday** — Ventana comercial de alto tráfico con flags, banners y reglas de promo especiales. Fuera de Cyber Monday, esos comportamientos deben estar apagados.
 
 **Orden** — Compromiso firmado después de pago aprobado. Incluye totales del carrito, envío confirmado y líneas de ítems. El `checkout-api` emite la orden; servicios posteriores la ejecutan y registran entrega o devolución.

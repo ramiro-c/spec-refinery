@@ -4,7 +4,7 @@ from schemas import Citation
 from catalog import SERVICE_IDS
 
 CYBER_TICKET = (
-    "Para el Cyber queremos un checkout más rápido, tipo Amazon: "
+    "Para el Cyber Monday queremos un checkout más rápido, tipo Amazon: "
     "que el comprar ahora no pase por el carrito."
 )
 
