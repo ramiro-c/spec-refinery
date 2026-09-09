@@ -4,3 +4,9 @@ __pycache__/
 *.sqlite
 .chroma/
 .secrets/
+
+# Local agent tooling caches
+.agents/
+.atl/
+.cachebro/
+skills-lock.json
