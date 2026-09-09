@@ -1,31 +1,35 @@
-"""Recuperador híbrido: BM25 + vectores con fusión RRF (patrón P4).
+"""Hybrid retriever: BM25 + vectors with RRF fusion (pattern P4).
 
-retrieve() acepta stubs lexical/semantic en tests. En producción usa
-EnsembleRetriever (c=60, pesos 0.5/0.5) y devuelve citas con document_id.
+``retrieve()`` accepts lexical/semantic stubs in tests. In production it uses
+EnsembleRetriever (c=60, weights 0.5/0.5) built lazily over Chroma + BM25.
+``aretrieve()`` is the async path used by graph nodes: retrievers are awaited
+natively and the only blocking step (lazy first build) runs in a worker
+thread, never bare inside an async function.
 """
 
 from __future__ import annotations
+
+import asyncio
 
 from langchain_chroma import Chroma
 from langchain_classic.retrievers import EnsembleRetriever
 from langchain_community.retrievers import BM25Retriever
 from langchain_core.documents import Document
 
-from config import CHROMA_DIR, CORPUS_DIR, INDEX_NAME, PINECONE_API_KEY, TOP_K, VECTOR_BACKEND
+from config import CHROMA_DIR, CORPUS_DIR, TOP_K, VECTOR_BACKEND
 from schemas import Citation
 
-# Fusión RRF (D8): mismos parámetros que pre-entrega-4.
+# RRF fusion (D8): same parameters as pre-entrega-4.
 RRF_C = 60
 RRF_WEIGHTS = [0.5, 0.5]
 COLLECTION_NAME = "spec-refinery"
 
-# Cache de producción (se arma en ingest).
-_bm25_retriever: BM25Retriever | None = None
-_vector_retriever = None
+# Lazy production ensemble (built on first retrieval, not at import).
+_ensemble: EnsembleRetriever | None = None
 
 
 def _parse_front_matter(text: str) -> tuple[dict[str, str], str]:
-    """Extrae front-matter YAML simple (document_id, title) del markdown."""
+    """Extract simple front-matter YAML (document_id, title) from markdown."""
     if not text.startswith("---\n"):
         return {}, text
     end = text.find("\n---\n", 4)
@@ -40,7 +44,7 @@ def _parse_front_matter(text: str) -> tuple[dict[str, str], str]:
 
 
 def load_corpus_documents() -> list[Document]:
-    """Carga el corpus markdown con document_id y title del front-matter."""
+    """Load the markdown corpus with document_id and title from front-matter."""
     documentos: list[Document] = []
     for ruta in sorted(CORPUS_DIR.rglob("*.md")):
         texto = ruta.read_text(encoding="utf-8")
@@ -59,12 +63,40 @@ def load_corpus_documents() -> list[Document]:
 
 
 def build_hybrid(lexical, semantic) -> EnsembleRetriever:
-    """Arma el ensemble RRF entre retriever léxico y semántico (producción)."""
+    """Assemble the RRF ensemble between lexical and semantic retrievers."""
     return EnsembleRetriever(
         retrievers=[lexical, semantic],
         weights=list(RRF_WEIGHTS),
         c=RRF_C,
     )
+
+
+def _build_production_retrievers():
+    """Rebuild retrievers from disk (Chroma) and corpus (BM25)."""
+    if VECTOR_BACKEND != "chroma":
+        raise RuntimeError(
+            f"Unsupported VECTOR_BACKEND: {VECTOR_BACKEND} (only chroma is supported)"
+        )
+    from embeddings import get_embeddings
+
+    documentos = load_corpus_documents()
+    lexical = BM25Retriever.from_documents(documentos, k=TOP_K)
+    vectorstore = Chroma(
+        persist_directory=str(CHROMA_DIR),
+        embedding_function=get_embeddings(),
+        collection_name=COLLECTION_NAME,
+    )
+    semantic = vectorstore.as_retriever(search_kwargs={"k": TOP_K})
+    return lexical, semantic
+
+
+def _production_retriever() -> EnsembleRetriever:
+    """Lazy: BM25 + vector ensemble according to the configured backend."""
+    global _ensemble
+    if _ensemble is None:
+        lexical, semantic = _build_production_retrievers()
+        _ensemble = build_hybrid(lexical, semantic)
+    return _ensemble
 
 
 def _as_citation(doc: Document) -> Citation:
@@ -77,7 +109,7 @@ def _as_citation(doc: Document) -> Citation:
 
 
 def _docs_to_citations(docs: list[Document], top_k: int) -> list[Citation]:
-    """Convierte Documentos a Citation deduplicando por document_id."""
+    """Convert Documents to Citations, deduplicating by document_id."""
     seen: set[str] = set()
     out: list[Citation] = []
     for doc in docs:
@@ -91,49 +123,30 @@ def _docs_to_citations(docs: list[Document], top_k: int) -> list[Citation]:
     return out
 
 
-def set_production_retrievers(lexical, semantic) -> None:
-    """Registra retrievers de producción tras la ingesta (usado por ingest.py)."""
-    global _bm25_retriever, _vector_retriever
-    _bm25_retriever = lexical
-    _vector_retriever = semantic
+async def _ainvoke_docs(retriever, query: str) -> list[Document]:
+    """Await a retriever natively; fall back to a worker thread for sync stubs."""
+    ainvoke = getattr(retriever, "ainvoke", None)
+    if ainvoke is not None:
+        return list(await ainvoke(query))
+    return list(await asyncio.to_thread(retriever.invoke, query))
 
 
-def build_production_retrievers():
-    """Reconstruye retrievers desde disco (Chroma/Pinecone) y corpus (BM25)."""
-    from embeddings import get_embeddings
-
-    documentos = load_corpus_documents()
-    lexical = BM25Retriever.from_documents(documentos, k=TOP_K)
-    if VECTOR_BACKEND == "pinecone":
-        if not PINECONE_API_KEY:
-            raise RuntimeError("PINECONE_API_KEY requerida para VECTOR_BACKEND=pinecone")
-        from pinecone import Pinecone
-        from langchain_pinecone import PineconeVectorStore
-
-        cliente = Pinecone(api_key=PINECONE_API_KEY)
-        vectorstore = PineconeVectorStore(
-            index=cliente.Index(INDEX_NAME),
-            embedding=get_embeddings(),
-            text_key="texto",
-            namespace="docs",
-        )
-    else:
-        vectorstore = Chroma(
-            persist_directory=str(CHROMA_DIR),
-            embedding_function=get_embeddings(),
-            collection_name=COLLECTION_NAME,
-        )
-    semantic = vectorstore.as_retriever(search_kwargs={"k": TOP_K})
-    return lexical, semantic
-
-
-def _production_retriever():
-    """Lazy: ensemble BM25 + vector según el backend configurado."""
-    global _bm25_retriever, _vector_retriever
-    if _bm25_retriever is None or _vector_retriever is None:
-        lexical, semantic = build_production_retrievers()
-        set_production_retrievers(lexical, semantic)
-    return build_hybrid(_bm25_retriever, _vector_retriever)
+async def aretrieve(
+    query: str,
+    *,
+    lexical=None,
+    semantic=None,
+    top_k: int = TOP_K,
+) -> list[Citation]:
+    """Async top-k retrieval. Tests inject stubs; production uses the ensemble."""
+    if lexical is not None and semantic is not None:
+        # Test stubs: concatenate lexical + semantic and reuse citation dedupe.
+        docs = await _ainvoke_docs(lexical, query) + await _ainvoke_docs(semantic, query)
+        return _docs_to_citations(docs, top_k)
+    # First ensemble build loads Chroma + BM25 (blocking) — run it off-loop.
+    retriever = await asyncio.to_thread(_production_retriever)
+    docs = await _ainvoke_docs(retriever, query)
+    return _docs_to_citations(docs, top_k)
 
 
 def retrieve(
@@ -143,11 +156,10 @@ def retrieve(
     semantic=None,
     top_k: int = TOP_K,
 ) -> list[Citation]:
-    """Recupera top-k citas. Tests inyectan stubs; producción usa EnsembleRetriever."""
+    """Sync retrieval for non-async callers (evaluate.py, tests with stubs)."""
     if lexical is not None and semantic is not None:
-        # Stubs de test: concatena léxico + semántico y reutiliza dedupe de citas.
+        # Test stubs: concatenate lexical + semantic and reuse citation dedupe.
         docs = list(lexical.invoke(query)) + list(semantic.invoke(query))
         return _docs_to_citations(docs, top_k)
-
     docs = _production_retriever().invoke(query)
     return _docs_to_citations(docs, top_k)
