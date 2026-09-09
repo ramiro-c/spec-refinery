@@ -1,4 +1,4 @@
-"""Factory multi-proveedor de modelos de chat."""
+"""Multi-provider chat model factory."""
 
 from clients.factory import build_chat_model, build_role_models
 

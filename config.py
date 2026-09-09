@@ -16,6 +16,8 @@ GEMINI_API_KEY = os.getenv("GEMINI_API_KEY")
 OPENROUTER_API_KEY = os.getenv("OPENROUTER_API_KEY")
 
 LLM_PROVIDER = _env_str("LLM_PROVIDER", "gemini")
+# live = Vertex/OpenRouter. fake = dummy nodes for QA/Docker without credentials.
+GRAPH_MODE = _env_str("SPEC_REFINERY_GRAPH", "live")
 VECTOR_BACKEND = _env_str("VECTOR_BACKEND", "chroma")
 CHECKPOINT_PATH = _env_str("CHECKPOINT_PATH", str(BASE_DIR / "checkpoints.sqlite"))
 CORPUS_DIR = BASE_DIR / "corpus"
@@ -24,5 +26,7 @@ MAX_STEPS = 8
 RECURSION_LIMIT = 20
 TOP_K = 5
 EMBEDDING_MODEL = _env_str("EMBEDDING_MODEL", "sentence-transformers/all-MiniLM-L6-v2")
-PINECONE_API_KEY = os.getenv("PINECONE_API_KEY")
-INDEX_NAME = _env_str("INDEX_NAME", "spec-refinery-rag")
+# Model IDs are configurable (rubric: no hardcoded models). Empty means
+# "use the provider default" resolved in clients/factory.py.
+SUPERVISOR_MODEL = _env_str("SUPERVISOR_MODEL", "")
+WRITER_MODEL = _env_str("WRITER_MODEL", "")

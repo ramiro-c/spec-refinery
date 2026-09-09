@@ -1,8 +1,10 @@
-"""Factory multi-proveedor (mismo wiring que pre-entrega-6, recortado).
+"""Multi-provider chat model factory (Vertex / OpenRouter).
 
-Con ``LLM_PROVIDER=openrouter`` cada rol del grafo usa un modelo distinto:
-supervisor rutea, writer redacta la spec. Gemini comparte un solo modelo
-(``DEFAULT_MODELS``).
+With ``LLM_PROVIDER=openrouter`` each graph role can use its own model via
+``SUPERVISOR_MODEL`` / ``WRITER_MODEL`` env vars (supervisor routes, writer
+drafts the spec). Gemini shares a single model unless a role env override is
+set. Model IDs are never hardcoded in call sites: defaults live here, env
+vars (read through ``config``) always win.
 """
 
 from __future__ import annotations
@@ -11,26 +13,11 @@ from typing import cast
 
 from langchain_core.language_models import BaseChatModel
 
-from config import GEMINI_API_KEY, LLM_PROVIDER
+from config import GEMINI_API_KEY, LLM_PROVIDER, SUPERVISOR_MODEL, WRITER_MODEL
 from schemas import ProviderName, RoleName
 
-DEFAULT_MODELS: dict[str, str] = {
-    "gemini": "gemini-2.5-flash",
-    "openrouter": "nvidia/nemotron-3-ultra-550b-a55b:free",
-}
-
-# OpenRouter :free — un modelo por rol.
-# supervisor: Nemotron 3 Ultra. Ruteo corto; structured output.
-# writer: MiniMax M3. Mejor razonamiento/IF para redactar la spec.
-OPENROUTER_ROLE_MODELS: dict[RoleName, str] = {
-    "supervisor": "nvidia/nemotron-3-ultra-550b-a55b:free",
-    "writer": "minimax/minimax-m3:free",
-}
-
-ROLE_TEMPERATURE: dict[RoleName, float] = {
-    "supervisor": 0.0,
-    "writer": 0.0,
-}
+GEMINI_DEFAULT_MODEL = "gemini-2.5-flash"
+OPENROUTER_DEFAULT_MODEL = "nvidia/nemotron-3-ultra-550b-a55b:free"
 
 
 def _normalize_provider(provider: str) -> ProviderName:
@@ -42,12 +29,15 @@ def _normalize_provider(provider: str) -> ProviderName:
     return cast(ProviderName, value)
 
 
-def _openrouter_model(role: RoleName | None, model: str | None) -> str:
+def _model_for(provider: str, role: RoleName | None, model: str | None) -> str:
+    """Resolve the model id: explicit arg > role env override > provider default."""
     if model:
         return model
-    if role:
-        return OPENROUTER_ROLE_MODELS[role]
-    return DEFAULT_MODELS["openrouter"]
+    if role == "supervisor" and SUPERVISOR_MODEL:
+        return SUPERVISOR_MODEL
+    if role == "writer" and WRITER_MODEL:
+        return WRITER_MODEL
+    return GEMINI_DEFAULT_MODEL if provider == "gemini" else OPENROUTER_DEFAULT_MODEL
 
 
 def build_chat_model(
@@ -59,14 +49,14 @@ def build_chat_model(
 ) -> BaseChatModel:
     resolved = _normalize_provider(provider or LLM_PROVIDER)
     if temperature is None:
-        temperature = ROLE_TEMPERATURE.get(role, 0.2) if role else 0.2
+        temperature = 0.0 if role is not None else 0.2
 
     if resolved == "gemini":
         from google.genai.types import AutomaticFunctionCallingConfig
         from langchain_google_genai import ChatGoogleGenerativeAI
 
-        # create_agent ya ejecuta las tools. El AFC de Gemini avisa (y puede
-        # pelearse con el ReAct) si Models.generate_content auto-llama funciones.
+        # create_agent already executes the tools. Gemini's AFC warns (and can
+        # clash with ReAct) if Models.generate_content auto-calls functions.
         class _GeminiChat(ChatGoogleGenerativeAI):
             def _prepare_request(self, *args, **kwargs):
                 request = super()._prepare_request(*args, **kwargs)
@@ -79,7 +69,7 @@ def build_chat_model(
 
         return _GeminiChat(
             api_key=GEMINI_API_KEY,
-            model=model or DEFAULT_MODELS["gemini"],
+            model=_model_for("gemini", role, model),
             temperature=temperature,
         )
 
@@ -87,7 +77,7 @@ def build_chat_model(
         from langchain_openrouter import ChatOpenRouter
 
         return ChatOpenRouter(
-            model=_openrouter_model(role, model),
+            model=_model_for("openrouter", role, model),
             temperature=temperature,
         )
 
@@ -97,7 +87,7 @@ def build_chat_model(
 def build_role_models(
     provider: str | None = None,
 ) -> dict[RoleName, BaseChatModel]:
-    """Dos LLMs listos para el grafo. OpenRouter los diferencia; gemini no."""
+    """Two LLMs ready for the graph. OpenRouter differentiates them; gemini doesn't."""
     resolved = _normalize_provider(provider or LLM_PROVIDER)
     if resolved == "openrouter":
         return {
