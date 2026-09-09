@@ -84,6 +84,22 @@ def _thread_config(thread_id: str) -> dict:
     return invoke_config(thread_id)
 
 
+async def _run_turn_or_503(*args, **kwargs) -> tuple[list[str], dict]:
+    """Runs a turn; LLM/runtime failures surface as a clean 503, not a raw 500.
+
+    A node failure (e.g. provider rate limit) leaves the raw exception in the
+    graph state, which LangGraph then fails to msgpack-serialize — without this
+    guard the client gets an opaque ``TypeError`` 500.
+    """
+    try:
+        return await run_turn(*args, **kwargs)
+    except Exception as exc:
+        raise HTTPException(
+            status_code=503,
+            detail=f"refinement failed: {type(exc).__name__}: {exc}",
+        ) from exc
+
+
 async def _require_thread(graph: CompiledStateGraph, thread_id: str) -> str:
     """Validates that the thread exists in the checkpointer and returns the ticket."""
     config = _thread_config(thread_id)
@@ -109,7 +125,7 @@ async def start_thread(
 ) -> StartThreadResponse:
     """Start: new thread with the initial ticket."""
     thread_id = str(uuid4())
-    _, final = await run_turn(
+    _, final = await _run_turn_or_503(
         graph,
         body.ticket,
         [HumanMessage(content=body.ticket)],
@@ -126,7 +142,7 @@ async def continue_thread(
 ) -> SpecResponse:
     """Continue: human message on an existing thread."""
     ticket = await _require_thread(graph, thread_id)
-    _, final = await run_turn(
+    _, final = await _run_turn_or_503(
         graph,
         ticket,
         [HumanMessage(content=body.content)],
@@ -142,7 +158,7 @@ async def close_thread(
 ) -> SpecResponse:
     """Close: the human closes the thread (no conversation listing)."""
     ticket = await _require_thread(graph, thread_id)
-    _, final = await run_turn(
+    _, final = await _run_turn_or_503(
         graph,
         ticket,
         [HumanMessage(content="cerrar")],

@@ -517,7 +517,8 @@ def main(argv: list[str] | None = None) -> int:
         results, _windows, trace_report = _selftest()
     else:
         print(f"mode: live API at {args.base_url} (server must already be running)\n")
-        with httpx.Client(base_url=args.base_url, timeout=120.0) as client:
+        timeout = float(os.getenv("QA_HTTP_TIMEOUT", "120.0"))
+        with httpx.Client(base_url=args.base_url, timeout=timeout) as client:
             results, windows = run_scenarios(client)
         if args.skip_traces:
             trace_report = TraceReport(SKIP, "trace check disabled with --skip-traces.")

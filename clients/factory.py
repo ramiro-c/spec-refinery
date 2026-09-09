@@ -67,11 +67,15 @@ def build_chat_model(
                     )
                 return request
 
-        return _GeminiChat(
-            api_key=GEMINI_API_KEY,
-            model=_model_for("gemini", role, model),
-            temperature=temperature,
-        )
+        gemini_kwargs = {
+            "model": _model_for("gemini", role, model),
+            "temperature": temperature,
+        }
+        # An explicit (empty) api_key forces the Developer API; leave it unset so
+        # GOOGLE_GENAI_USE_VERTEXAI=true routes through Vertex AI with ADC.
+        if GEMINI_API_KEY:
+            gemini_kwargs["api_key"] = GEMINI_API_KEY
+        return _GeminiChat(**gemini_kwargs)
 
     if resolved == "openrouter":
         from langchain_openrouter import ChatOpenRouter
