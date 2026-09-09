@@ -1,39 +1,39 @@
-"""Supervisor: router + rúbrica. No busca ni escribe; solo decide el próximo nodo.
+"""Supervisor: router + rubric. It neither searches nor writes; it only picks
+the next node.
 
-La decisión del LLM es un ``Literal`` (nombres de nodo). ``apply_rubric`` la
-corrige si viola las reglas duras: sin citations no hay FINISH, y ``MAX_STEPS``
-corta el bucle.
+The LLM decision is a ``Literal`` (node names). ``apply_rubric`` corrects it if
+it violates the hard rules: no citations means no FINISH, and ``MAX_STEPS``
+cuts the loop.
 """
 
 from __future__ import annotations
-
-from typing import Any
 
 from langchain_core.language_models import BaseChatModel
 from langchain_core.messages import AIMessage, HumanMessage, SystemMessage
 from pydantic import BaseModel, Field
 
+from agents.text import message_text
 from config import MAX_STEPS
 from state import NextAgent, RefineryState
 
-SUPERVISOR_PROMPT = """Sos el supervisor de una refinería de specs.
-No busques en el corpus ni redactes la spec. Elegí el próximo agente.
+SUPERVISOR_PROMPT = """You are the supervisor of a spec refinery.
+Do not search the corpus nor draft the spec. Pick the next agent.
 
-Rúbrica (en orden, la primera que aplique gana):
-1. Si citations está vacío → retriever.
-2. Si hay citations y questions de este turno vacío → intake antes de FINISH.
-3. Si el humano pidió cerrar (close_requested) → FINISH.
-4. Nunca elijas un agente que no exista. Opciones: retriever, intake, FINISH.
+Rubric (in order, the first match wins):
+1. If citations is empty -> retriever.
+2. If there are citations and this turn's questions are empty -> intake before FINISH.
+3. If the human asked to close (close_requested) -> FINISH.
+4. Never pick an agent that does not exist. Options: retriever, intake, FINISH.
 
-Respondé solo con next_agent y una rationale corta (una frase).
+Answer only with next_agent and a short rationale (one sentence).
 """
 
 
 class SupervisorDecision(BaseModel):
     next_agent: NextAgent = Field(
-        description="Nodo siguiente: retriever, intake o FINISH."
+        description="Next node: retriever, intake or FINISH."
     )
-    rationale: str = Field(description="Por qué esa elección, una frase.")
+    rationale: str = Field(description="Why that choice, one sentence.")
 
 
 def apply_rubric(
@@ -45,7 +45,7 @@ def apply_rubric(
     close_requested: bool,
     last_error: str = "",
 ) -> NextAgent:
-    """Reglas duras encima del LLM. El grafo nunca ve un next_agent ilegal."""
+    """Hard rules on top of the LLM. The graph never sees an illegal next_agent."""
     if last_error.strip():
         return "FINISH"
     if step_count >= MAX_STEPS:
@@ -61,27 +61,12 @@ def apply_rubric(
     return "retriever"
 
 
-def _message_text(message: Any) -> str:
-    content = getattr(message, "content", message)
-    if isinstance(content, str):
-        return content
-    if isinstance(content, list):
-        parts: list[str] = []
-        for block in content:
-            if isinstance(block, str):
-                parts.append(block)
-            elif isinstance(block, dict) and block.get("type") == "text":
-                parts.append(str(block.get("text") or ""))
-        return "\n".join(p for p in parts if p)
-    return str(content)
-
-
 def _user_query(messages: list) -> str:
-    """Última pregunta humana: la consulta más reciente, no el ruido del grafo."""
+    """Last human question: the most recent query, not graph noise."""
     last = ""
     for message in messages or []:
         if getattr(message, "type", None) == "human":
-            last = _message_text(message)
+            last = message_text(message)
     return last
 
 
@@ -89,21 +74,21 @@ def _snapshot(state: RefineryState) -> str:
     citations = state.get("citations") or []
     questions = state.get("questions") or []
     citations_text = (
-        "(vacío)"
+        "(empty)"
         if not citations
         else "\n".join(f"- {c.document_id}: {c.title or c.excerpt[:80]}" for c in citations)
     )
     questions_text = (
-        "(vacío)" if not questions else "\n".join(f"- {q}" for q in questions)
+        "(empty)" if not questions else "\n".join(f"- {q}" for q in questions)
     )
-    last_agent = state.get("last_agent") or "(nadie)"
+    last_agent = state.get("last_agent") or "(nobody)"
     step_count = int(state.get("step_count") or 0)
-    last_error = (state.get("last_error") or "").strip() or "(ninguno)"
+    last_error = (state.get("last_error") or "").strip() or "(none)"
     close_requested = bool(state.get("close_requested"))
-    ticket = state.get("ticket") or "(sin ticket)"
+    ticket = state.get("ticket") or "(no ticket)"
     return (
         f"Ticket: {ticket}\n"
-        f"Consulta: {_user_query(state.get('messages') or [])}\n"
+        f"Query: {_user_query(state.get('messages') or [])}\n"
         f"last_agent: {last_agent}\n"
         f"step_count: {step_count}/{MAX_STEPS}\n"
         f"last_error: {last_error}\n"
@@ -113,7 +98,7 @@ def _snapshot(state: RefineryState) -> str:
     )
 
 
-def supervisor_turn(state: RefineryState, llm: BaseChatModel | None = None) -> dict:
+async def supervisor_turn(state: RefineryState, llm: BaseChatModel) -> dict:
     step_count = int(state.get("step_count") or 0) + 1
     last_error = (state.get("last_error") or "").strip()
     citations = state.get("citations") or []
@@ -121,23 +106,13 @@ def supervisor_turn(state: RefineryState, llm: BaseChatModel | None = None) -> d
     close_requested = bool(state.get("close_requested"))
 
     if last_error:
-        rationale = f"Hay un last_error: no reintento el mismo nodo. {last_error}"
+        rationale = f"There is a last_error: I do not retry the same node. {last_error}"
         next_agent: NextAgent = "FINISH"
     elif step_count >= MAX_STEPS:
-        rationale = f"Tope de {MAX_STEPS} pasos: cierro para no loopear."
+        rationale = f"Hit the {MAX_STEPS}-step cap: closing to avoid looping."
         next_agent = "FINISH"
-    elif llm is None:
-        rationale = "Sin LLM: rúbrica determinística."
-        next_agent = apply_rubric(
-            citations_empty=not citations,
-            questions_empty=not questions,
-            step_count=step_count,
-            proposed="retriever",
-            close_requested=close_requested,
-            last_error=last_error,
-        )
     else:
-        decision = llm.with_structured_output(SupervisorDecision).invoke(
+        decision = await llm.with_structured_output(SupervisorDecision).ainvoke(
             [
                 SystemMessage(content=SUPERVISOR_PROMPT),
                 HumanMessage(content=_snapshot({**state, "step_count": step_count})),
@@ -153,7 +128,7 @@ def supervisor_turn(state: RefineryState, llm: BaseChatModel | None = None) -> d
         )
         rationale = decision.rationale
         if next_agent != decision.next_agent:
-            rationale = f"{rationale} [rúbrica: {decision.next_agent} → {next_agent}]"
+            rationale = f"{rationale} [rubric: {decision.next_agent} -> {next_agent}]"
 
     return {
         "messages": [AIMessage(content=rationale, name="supervisor")],
@@ -164,7 +139,7 @@ def supervisor_turn(state: RefineryState, llm: BaseChatModel | None = None) -> d
 
 
 def make_supervisor_node(llm: BaseChatModel):
-    def supervisor_node(state: RefineryState) -> dict:
-        return supervisor_turn(state, llm)
+    async def supervisor_node(state: RefineryState) -> dict:
+        return await supervisor_turn(state, llm)
 
     return supervisor_node

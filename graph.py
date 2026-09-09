@@ -1,7 +1,9 @@
-"""Grafo jerárquico: supervisor rutea retriever → intake → writer.
+"""Hierarchical graph: supervisor routes retriever -> intake -> writer.
 
-``route_from_supervisor`` devuelve nombres de nodo. ``FINISH`` se mapea a
-``writer``, que actualiza la spec y termina en ``END``.
+``route_from_supervisor`` returns node names. ``FINISH`` maps to ``writer``,
+which updates the spec and ends at ``END``. ``run_turn`` streams asynchronously
+(``astream``) and preserves the event contract consumed by the API: node hops
+plus the final state.
 """
 
 from __future__ import annotations
@@ -9,16 +11,11 @@ from __future__ import annotations
 from collections.abc import Callable
 from typing import Literal
 
-from langchain_core.language_models import BaseChatModel
 from langgraph.checkpoint.base import BaseCheckpointSaver
 from langgraph.graph import END, START, StateGraph
 from langgraph.graph.state import CompiledStateGraph
 
-from agents.intake import make_intake_node
-from agents.retriever_node import make_retriever_node
 from agents.retry import NODE_RETRY, node_error_handler
-from agents.supervisor import make_supervisor_node
-from agents.writer import make_writer_node
 from config import RECURSION_LIMIT
 from state import RefineryState, initial_fields
 
@@ -27,7 +24,7 @@ Route = Literal["retriever", "intake", "writer"]
 
 
 def route_from_supervisor(state: RefineryState) -> Route:
-    """Lee ``next_agent`` y lo traduce a un destino del grafo."""
+    """Reads ``next_agent`` and maps it to a graph destination."""
     nxt = state.get("next_agent")
     if nxt in ("retriever", "intake"):
         return nxt
@@ -41,20 +38,24 @@ def build_graph(
     intake: NodeFn | None = None,
     writer: NodeFn | None = None,
     checkpointer: BaseCheckpointSaver | None = None,
-    llm: BaseChatModel | None = None,
 ) -> CompiledStateGraph:
-    """Arma el grafo. Sin nodos explícitos, usa factory LLM (supervisor + writer)."""
+    """Assemble the graph. Without explicit nodes, uses the LLM factory (supervisor + writer)."""
     if supervisor is None or writer is None:
-        if llm is None:
-            from clients.factory import build_role_models
+        from agents.supervisor import make_supervisor_node
+        from agents.writer import make_writer_node
+        from clients.factory import build_role_models
 
-            models = build_role_models()
-        else:
-            models = {"supervisor": llm, "writer": llm}
+        models = build_role_models()
         supervisor = supervisor or make_supervisor_node(models["supervisor"])
         writer = writer or make_writer_node(models["writer"])
-    retriever = retriever or make_retriever_node()
-    intake = intake or make_intake_node()
+    if retriever is None:
+        from agents.retriever_node import make_retriever_node
+
+        retriever = make_retriever_node()
+    if intake is None:
+        from agents.intake import make_intake_node
+
+        intake = make_intake_node()
     builder = StateGraph(RefineryState)
     builder.set_node_defaults(
         retry_policy=NODE_RETRY,
@@ -87,15 +88,15 @@ def invoke_config(thread_id: str | None = None) -> dict:
     return config
 
 
-def _has_checkpoint(graph: CompiledStateGraph, config: dict) -> bool:
-    """True si el hilo ya tiene estado persistido."""
+async def _has_checkpoint(graph: CompiledStateGraph, config: dict) -> bool:
+    """True if the thread already has persisted state."""
     checkpointer = graph.checkpointer
     if checkpointer is None:
         return False
-    return checkpointer.get_tuple(config) is not None
+    return await checkpointer.aget_tuple(config) is not None
 
 
-def run_turn(
+async def run_turn(
     graph: CompiledStateGraph,
     ticket: str,
     messages: list,
@@ -103,10 +104,10 @@ def run_turn(
     thread_id: str | None = None,
     close_requested: bool = False,
 ) -> tuple[list[str], dict]:
-    """Corre un turno en stream: hops de nodos + estado final."""
+    """Run a turn as an async stream: node hops + final state."""
     config = invoke_config(thread_id)
-    if _has_checkpoint(graph, config):
-        # Continuación: no pisar spec ni otros campos del checkpoint.
+    if await _has_checkpoint(graph, config):
+        # Continuation: do not overwrite the checkpointed spec or other fields.
         inputs = {
             "messages": messages,
             "close_requested": close_requested,
@@ -121,7 +122,7 @@ def run_turn(
 
     hops: list[str] = []
     final: dict | None = None
-    for mode, data in graph.stream(
+    async for mode, data in graph.astream(
         inputs,
         config,
         stream_mode=["updates", "values"],
@@ -134,5 +135,5 @@ def run_turn(
         else:
             final = data
     if final is None:
-        raise RuntimeError("el grafo no emitió estado final")
+        raise RuntimeError("the graph did not emit a final state")
     return hops, final
