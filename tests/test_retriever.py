@@ -16,7 +16,7 @@ def test_retrieve_dedupes_by_document_id_and_keeps_cart_rule():
         metadata={"document_id": "adr-cart-price.md", "title": "Precio en carrito"},
     )
     other = Document(
-        page_content="Flags de Cyber.",
+        page_content="Flags de Cyber Monday.",
         metadata={"document_id": "adr-cyber-flags.md", "title": "Flags"},
     )
     citations = retrieve(

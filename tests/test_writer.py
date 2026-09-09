@@ -1,4 +1,4 @@
-"""Writer con LLM fake (RunnableLambda), estilo P4."""
+"""Writer with a fake LLM (RunnableLambda), P4 style."""
 
 from __future__ import annotations
 
@@ -12,7 +12,7 @@ from state import empty_spec, initial_fields
 
 
 def _modelo_llm_fake(salida: dict, *, capturar=None):
-    """LLM fake que devuelve SpecDocument vía with_structured_output."""
+    """Fake LLM that returns a SpecDocument via with_structured_output."""
 
     class _ChatModelFake(Runnable):
         def invoke(self, mensajes, config=None, **kwargs):
@@ -29,7 +29,7 @@ def _modelo_llm_fake(salida: dict, *, capturar=None):
     return _ChatModelFake()
 
 
-def test_writer_llm_reescribe_spec_y_respeta_pedido():
+async def test_writer_llm_reescribe_spec_y_respeta_pedido():
     modelo = _modelo_llm_fake(
         {
             "pedido": "no debe quedar",
@@ -45,7 +45,7 @@ def test_writer_llm_reescribe_spec_y_respeta_pedido():
         **initial_fields(CYBER_TICKET),
         "questions": ["¿medimos?", "¿stock?", "¿envío?"],
     }
-    out = writer_turn(state, modelo)
+    out = await writer_turn(state, modelo)
 
     spec = out["spec"]
     assert spec.pedido == CYBER_TICKET
@@ -55,7 +55,7 @@ def test_writer_llm_reescribe_spec_y_respeta_pedido():
     assert out["last_agent"] == "writer"
 
 
-def test_writer_close_requested_vacia_preguntas():
+async def test_writer_close_requested_vacia_preguntas():
     modelo = _modelo_llm_fake(
         {
             "pedido": "x",
@@ -70,13 +70,13 @@ def test_writer_close_requested_vacia_preguntas():
         "questions": ["¿medimos?"],
         "spec": empty_spec(CYBER_TICKET),
     }
-    out = writer_turn(state, modelo)
+    out = await writer_turn(state, modelo)
 
     assert out["spec"].preguntas == []
 
 
-def test_writer_ve_respuesta_pm_y_spec_anterior():
-    """El prompt incluye el follow-up del PM y la spec previa."""
+async def test_writer_ve_respuesta_pm_y_spec_anterior():
+    """The prompt includes the PM follow-up and the previous spec."""
     capturar: dict = {}
     respuesta_pm = "para todo, no medimos"
     modelo = _modelo_llm_fake(
@@ -100,7 +100,7 @@ def test_writer_ve_respuesta_pm_y_spec_anterior():
         "spec": prior,
         "questions": ["¿medimos?"],
     }
-    out = writer_turn(state, modelo)
+    out = await writer_turn(state, modelo)
 
     human_msg = capturar["mensajes"][-1].content
     assert respuesta_pm in human_msg
