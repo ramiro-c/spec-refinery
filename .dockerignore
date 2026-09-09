@@ -1,0 +1,12 @@
+.git
+.venv
+.chroma
+.superpowers
+.pytest_cache
+__pycache__
+*.sqlite
+.secrets
+.env
+.agents
+docs/grafo.html
+*.pyc

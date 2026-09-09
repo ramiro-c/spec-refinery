@@ -1,0 +1,59 @@
+services:
+  phoenix:
+    image: arizephoenix/phoenix:latest
+    ports:
+      - "6010:6006"
+    healthcheck:
+      test: ["CMD", "python", "-c", "import urllib.request; urllib.request.urlopen('http://127.0.0.1:6006')"]
+      interval: 5s
+      timeout: 5s
+      retries: 20
+      start_period: 10s
+
+  api:
+    build: .
+    ports:
+      - "8000:8000"
+    environment:
+      SPEC_REFINERY_GRAPH: fake
+      PHOENIX_COLLECTOR_ENDPOINT: http://phoenix:6006/v1/traces
+      CHECKPOINT_PATH: /data/checkpoints.sqlite
+    volumes:
+      - api-data:/data
+    depends_on:
+      phoenix:
+        condition: service_started
+    healthcheck:
+      test:
+        [
+          "CMD",
+          "python",
+          "-c",
+          "import urllib.request; urllib.request.urlopen('http://127.0.0.1:8000/health')",
+        ]
+      interval: 5s
+      timeout: 5s
+      retries: 20
+      start_period: 15s
+
+  ui:
+    build: .
+    command:
+      [
+        "streamlit",
+        "run",
+        "ui.py",
+        "--server.port=8501",
+        "--server.address=0.0.0.0",
+        "--server.headless=true",
+      ]
+    ports:
+      - "8501:8501"
+    environment:
+      SPEC_REFINERY_API: http://api:8000
+    depends_on:
+      api:
+        condition: service_healthy
+
+volumes:
+  api-data:
