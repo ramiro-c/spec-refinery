@@ -73,6 +73,18 @@ def _closing_reply(spec: dict) -> str:
     )
 
 
+def _absorb(payload: dict) -> None:
+    """Guarda spec y presupuesto de rondas que devolvió el API."""
+    st.session_state.spec = payload["spec"]
+    st.session_state.ronda = payload.get("ronda", st.session_state.ronda)
+    st.session_state.max_rondas = payload.get(
+        "max_rondas", st.session_state.max_rondas
+    )
+    st.session_state.max_preguntas = payload.get(
+        "max_preguntas_por_ronda", st.session_state.max_preguntas
+    )
+
+
 def _queue_prompt(prompt: str) -> None:
     """Guarda el texto y rerun. El API se pega en el próximo ciclo, antes de pintar."""
     st.session_state.pending_prompt = prompt
@@ -88,9 +100,10 @@ def _execute_prompt(prompt: str) -> None:
             st.session_state.thread_id = payload["thread_id"]
         else:
             payload = _post_message(st.session_state.thread_id, prompt)
-        spec = payload["spec"]
-        st.session_state.spec = spec
-        st.session_state.messages.append(("assistant", _assistant_reply(spec)))
+        _absorb(payload)
+        st.session_state.messages.append(
+            ("assistant", _assistant_reply(st.session_state.spec))
+        )
     except httpx.HTTPError as error:
         st.session_state.api_error = f"Error de API: {error}"
 
@@ -108,9 +121,10 @@ def _drain_pending() -> None:
         try:
             with st.spinner("Cerrando spec..."):
                 payload = _post_close(st.session_state.thread_id)
-            spec = payload["spec"]
-            st.session_state.spec = spec
-            st.session_state.messages.append(("assistant", _closing_reply(spec)))
+            _absorb(payload)
+            st.session_state.messages.append(
+                ("assistant", _closing_reply(st.session_state.spec))
+            )
         except httpx.HTTPError as error:
             st.session_state.api_error = f"Error al cerrar: {error}"
 
@@ -129,6 +143,12 @@ def _init_session() -> None:
         st.session_state.pending_close = False
     if "api_error" not in st.session_state:
         st.session_state.api_error = None
+    if "ronda" not in st.session_state:
+        st.session_state.ronda = 0
+    if "max_rondas" not in st.session_state:
+        st.session_state.max_rondas = 5
+    if "max_preguntas" not in st.session_state:
+        st.session_state.max_preguntas = 3
 
 
 def _post_start(ticket: str) -> dict:
@@ -233,15 +253,54 @@ def _render_spec(spec: dict) -> None:
     st.caption(razon)
 
 
+def _render_intro() -> None:
+    """Contexto para alguien que abre esto por primera vez."""
+    st.markdown(
+        "**Sos el PM.** Escribí abajo un pedido vago, como el que mandarías "
+        "un lunes a la mañana."
+    )
+    st.markdown(
+        "El sistema busca las reglas internas de **Marketplace Andes** con RAG "
+        "y te interroga hasta que la spec sea implementable. Si tu pedido "
+        "choca con una regla, te lo planta con el documento en la mano — y "
+        "podés ganarle: si decidís cambiar esa regla, lo anota como decisión "
+        "en vez de seguir preguntando."
+    )
+    st.markdown("**Reglas del juego**")
+    st.markdown(
+        f"- Hasta **{st.session_state.max_preguntas} preguntas por ronda**\n"
+        f"- Máximo **{st.session_state.max_rondas} rondas**; después la spec "
+        "se congela con lo que haya\n"
+        "- **Cerrás vos** cuando quieras: el botón o pedíselo al chat"
+    )
+    st.caption("La spec se va reescribiendo sola en el panel de la derecha.")
+
+
+def _render_round_meter() -> None:
+    """Cuánto presupuesto de interrogatorio queda."""
+    ronda = int(st.session_state.ronda or 0)
+    total = int(st.session_state.max_rondas or 5)
+    restantes = max(total - ronda, 0)
+    if restantes:
+        detalle = f"quedan {restantes}"
+    else:
+        detalle = "spec congelada"
+    st.caption(
+        f"Ronda **{min(ronda, total)} de {total}** · {detalle} · "
+        f"hasta {st.session_state.max_preguntas} preguntas por ronda"
+    )
+    st.progress(min(ronda / total, 1.0) if total else 0.0)
+
+
 def _render_sidebar() -> None:
     """Explicación para profes: no come el alto del chat."""
     st.markdown("**Qué es**")
     st.caption(
         "Un PM pega un ticket vago. El sistema busca las reglas de Marketplace "
-        "Andes y lo interroga ronda a ronda: pregunta lo que haga falta hasta "
-        "que la spec sea implementable, y discute cuando el pedido choca con "
-        "una regla. Cerrar lo decide el humano, con el botón o pidiéndoselo "
-        "al chat."
+        "Andes y lo interroga ronda a ronda hasta que la spec sea "
+        "implementable, discutiendo cuando el pedido choca con una regla. "
+        "Las reglas del pedido no son ley: si el PM decide cambiarlas, queda "
+        "anotado como decisión."
     )
     st.markdown("**Caso de demo**")
     st.caption(
@@ -250,6 +309,12 @@ def _render_sidebar() -> None:
     )
     with st.expander("Ticket de demo"):
         st.write(CYBER_TICKET)
+    st.markdown("**Límites**")
+    st.caption(
+        f"{st.session_state.max_preguntas} preguntas por ronda · "
+        f"{st.session_state.max_rondas} rondas como máximo · "
+        "cerrar lo decide el humano"
+    )
     st.caption(f"API: `{API_URL}`")
 
 
@@ -276,14 +341,11 @@ def main() -> None:
     with col_chat:
         st.subheader("Conversación")
         if not st.session_state.messages:
-            st.info(
-                "Escribí abajo un pedido vago, como lo mandaría un PM. "
-                "El sistema busca las reglas de Andes y te interroga hasta que "
-                "la spec sea implementable. Cerrás vos, cuando quieras."
-            )
+            _render_intro()
             if st.button("Usar el ticket de demo", type="secondary"):
                 _queue_prompt(CYBER_TICKET)
         else:
+            _render_round_meter()
             with st.container(height=PANEL_HEIGHT, border=False):
                 for role, text in st.session_state.messages:
                     with st.chat_message(role):

@@ -6,6 +6,7 @@ from langchain_core.messages import HumanMessage
 from langchain_core.runnables import Runnable, RunnableLambda
 
 from agents.writer import writer_turn
+from config import MAX_ROUNDS
 from demo import CYBER_TICKET
 from schemas import Decision, SpecStatus
 from state import empty_spec, initial_fields
@@ -160,6 +161,7 @@ async def test_writer_falls_back_to_the_last_verdict_on_an_explicit_close():
     assert out["spec"].estado.vaguedad == 6
     # The document closes; the status stays honest about what was left open.
     assert "Cerrada a pedido tuyo" in out["spec"].estado.razon
+    assert "vaguedad 6" in out["spec"].estado.razon
 
 
 async def test_writer_drops_services_outside_the_catalog():
@@ -232,3 +234,26 @@ async def test_writer_lets_a_new_decision_supersede_the_same_topic():
 
     assert len(out["spec"].decisiones) == 1
     assert out["spec"].decisiones[0].decision == "solo SKU 1P de electro"
+
+
+async def test_writer_freezes_the_spec_when_the_rounds_run_out():
+    """The round budget is a promise to the PM: it closes on its own."""
+    modelo = _modelo_llm_fake(
+        {
+            "pedido": "x",
+            "que_entendimos": "y",
+            "criterios": [],
+            "preguntas": [],
+            "estado": {"se_puede_cerrar": True, "vaguedad": 0, "razon": "invento"},
+        }
+    )
+    state = {
+        **initial_fields(CYBER_TICKET),
+        "questions": ["¿Y el stock?"],
+        "round_count": MAX_ROUNDS,
+        "assessment": SpecStatus(se_puede_cerrar=False, vaguedad=6, razon="x"),
+    }
+    out = await writer_turn(state, modelo)
+
+    assert out["spec"].preguntas == []
+    assert f"se agotaron las {MAX_ROUNDS} rondas" in out["spec"].estado.razon

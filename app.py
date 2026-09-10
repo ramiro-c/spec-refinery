@@ -18,7 +18,7 @@ from langgraph.graph.state import CompiledStateGraph
 from pydantic import BaseModel
 
 from checkpoint import close_checkpointer, open_checkpointer
-from config import GRAPH_MODE
+from config import GRAPH_MODE, MAX_QUESTIONS_PER_ROUND, MAX_ROUNDS
 from graph import build_graph, invoke_config, run_turn
 from schemas import SpecDocument
 from tracing import setup_tracing
@@ -74,10 +74,16 @@ class MessageRequest(BaseModel):
 class StartThreadResponse(BaseModel):
     thread_id: str
     spec: SpecDocument
+    ronda: int
+    max_rondas: int = MAX_ROUNDS
+    max_preguntas_por_ronda: int = MAX_QUESTIONS_PER_ROUND
 
 
 class SpecResponse(BaseModel):
     spec: SpecDocument
+    ronda: int
+    max_rondas: int = MAX_ROUNDS
+    max_preguntas_por_ronda: int = MAX_QUESTIONS_PER_ROUND
 
 
 def _thread_config(thread_id: str) -> dict:
@@ -131,7 +137,11 @@ async def start_thread(
         [HumanMessage(content=body.ticket)],
         thread_id=thread_id,
     )
-    return StartThreadResponse(thread_id=thread_id, spec=final["spec"])
+    return StartThreadResponse(
+        thread_id=thread_id,
+        spec=final["spec"],
+        ronda=int(final.get("round_count") or 0),
+    )
 
 
 @app.post("/threads/{thread_id}/messages", response_model=SpecResponse)
@@ -153,7 +163,9 @@ async def continue_thread(
         [HumanMessage(content=body.content)],
         thread_id=thread_id,
     )
-    return SpecResponse(spec=final["spec"])
+    return SpecResponse(
+        spec=final["spec"], ronda=int(final.get("round_count") or 0)
+    )
 
 
 @app.post("/threads/{thread_id}/close", response_model=SpecResponse)
@@ -170,4 +182,6 @@ async def close_thread(
         thread_id=thread_id,
         close_requested=True,
     )
-    return SpecResponse(spec=final["spec"])
+    return SpecResponse(
+        spec=final["spec"], ronda=int(final.get("round_count") or 0)
+    )

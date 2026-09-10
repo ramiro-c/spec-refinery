@@ -1,6 +1,6 @@
 # Spec Refinery
 
-Refinador de requerimientos para PMs: pegás un ticket vago y el sistema te **interroga** ronda a ronda hasta que la spec sea implementable. Busca las reglas de la empresa con RAG, discute cuando el pedido las contradice, y repregunta si le contestás cualquier cosa. No hay catálogo de preguntas: el LLM decide qué hace falta para este pedido y cuántas preguntas hacen falta. El humano cierra cuando quiere: con el botón o pidiéndoselo al chat.
+Refinador de requerimientos para PMs: pegás un ticket vago y el sistema te **interroga** ronda a ronda hasta que la spec sea implementable. Busca las reglas de la empresa con RAG, discute cuando el pedido las contradice, y repregunta si le contestás cualquier cosa. No hay catálogo de preguntas: el LLM decide qué hace falta para este pedido, con un presupuesto visible de **3 preguntas por ronda** y **5 rondas** antes de congelar la spec. El humano cierra cuando quiere: con el botón o pidiéndoselo al chat.
 
 Diagrama interactivo del grafo: [docs/grafo.html](docs/grafo.html) (generado con [Archify](.agents/skills/archify)).
 
@@ -10,7 +10,8 @@ Diagrama interactivo del grafo: [docs/grafo.html](docs/grafo.html) (generado con
 2. El interrogador cruza el pedido con el corpus y te planta las contradicciones: sin carrito, ¿cuándo reserva stock `inventory-service` (`adr-stock-reserve.md`)? ¿Cómo confirma envío `shipping-service` (`adr-shipping-step.md`)?
 3. Respondés en el chat. Si contestás una evasiva, te la cita de vuelta y repregunta; la vaguedad no baja.
 4. Cuando respondés en serio, la vaguedad baja y las preguntas cambian. Si te contradecís con tu propio ticket, te lo marca.
-5. Cerrás vos: apretás **Cerrar spec** o se lo pedís al chat. Si la spec todavía no está lista, el documento final lo dice igual.
+5. Si tu pedido choca con una regla y decidís cambiarla, queda anotado en **Decisiones** y deja de preguntártelo. Las reglas son evidencia, no ley.
+6. Cerrás vos: apretás **Cerrar spec** o se lo pedís al chat — nunca se niega. Si se agotan las 5 rondas, la spec se congela sola. En los dos casos el estado dice qué quedó abierto.
 
 ## Levantar
 
@@ -63,7 +64,7 @@ Cada nodo corre **como mucho una vez por turno**: volver a interrogar sobre el m
 |------|-----|
 | **Supervisor** | Rutea según rúbrica dura; no busca ni escribe. |
 | **Retriever** | RAG híbrido (BM25 + embeddings + RRF) sobre Chroma. |
-| **Intake** (interrogador) | LLM: lee el ticket, todo el transcript y las reglas recuperadas, y decide qué preguntar, cuántas preguntas y si la spec ya se puede cerrar. Sin catálogo de preguntas ni scoring por palabras clave. |
+| **Intake** (interrogador) | LLM: lee el ticket, todo el transcript y las reglas recuperadas, y decide qué preguntar (hasta 3 por ronda, 5 rondas) y si la spec ya se puede cerrar. Sin catálogo de preguntas ni scoring por palabras clave. |
 | **Writer** | Reescribe `que_entendimos`, `criterios` y `servicios`. No puntúa: el veredicto (`estado`) es del interrogador. |
 
 La API (`app.py`) es el sistema; Streamlit (`ui.py`) es la piel.

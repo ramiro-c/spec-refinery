@@ -14,10 +14,11 @@ from langchain_core.messages import AIMessage, HumanMessage, SystemMessage
 
 from agents.text import transcript_lines
 from catalog import SERVICE_IDS
+from config import MAX_QUESTIONS_PER_ROUND, MAX_ROUNDS
 from schemas import Interrogation, SpecStatus
 from state import RefineryState
 
-INTERROGATOR_PROMPT = """You are the technical interrogator of a spec refinery:
+INTERROGATOR_PROMPT_TEMPLATE = """You are the technical interrogator of a spec refinery:
 the senior engineer who refuses to let a vague requirement reach a sprint.
 
 Your job is to grill the PM until the request is unambiguous, testable, and
@@ -39,11 +40,15 @@ Who decides what:
   CONSEQUENCES of that decision, because those are new questions, but never
   re-litigate a decision the PM already took.
 
+Your budget (the PM sees it too, so respect it):
+- At most {max_questions} questions per round. Pick the ones that actually
+  block implementation; the rest can wait for a later round or be dropped.
+- At most {max_rounds} rounds. On the final round ask nothing: give your
+  verdict and let the spec close with whatever is still open.
+
 How you work:
 - Ground every challenge in the citations you were given. Do not invent rules
   that are not cited.
-- Ask as many questions as this specific request needs. Do not ration them to
-  look polite and do not pad the list to look thorough.
 - Read the whole transcript and the decisions already recorded in the spec.
   Never re-emit a question that was answered or settled. If an answer was
   evasive, quote it and push back; if it was substantive, move on.
@@ -59,8 +64,13 @@ Write every question in Rioplatense Spanish (voseo), short and pointed, one
 idea per question.
 """
 
+INTERROGATOR_PROMPT = INTERROGATOR_PROMPT_TEMPLATE.format(
+    max_questions=MAX_QUESTIONS_PER_ROUND,
+    max_rounds=MAX_ROUNDS,
+)
 
-def _snapshot(state: RefineryState) -> str:
+
+def _snapshot(state: RefineryState, round_number: int) -> str:
     citations = state.get("citations") or []
     if citations:
         rules = "\n".join(
@@ -78,7 +88,13 @@ def _snapshot(state: RefineryState) -> str:
         if settled
         else "(none yet)"
     )
+    budget = f"Round {round_number} of {MAX_ROUNDS}. " + (
+        "FINAL ROUND: ask nothing, give your verdict."
+        if round_number >= MAX_ROUNDS
+        else f"You may ask up to {MAX_QUESTIONS_PER_ROUND} questions."
+    )
     return (
+        f"{budget}\n\n"
         f"Original ticket:\n{state.get('ticket') or '(none)'}\n\n"
         f"Company rules retrieved for this request:\n{rules}\n\n"
         f"Conversation so far:\n{conversation}\n\n"
@@ -89,13 +105,17 @@ def _snapshot(state: RefineryState) -> str:
 
 
 async def interrogate(state: RefineryState, llm: BaseChatModel) -> dict:
+    round_number = int(state.get("round_count") or 0) + 1
+    final_round = round_number >= MAX_ROUNDS
     verdict = await llm.with_structured_output(Interrogation).ainvoke(
         [
             SystemMessage(content=INTERROGATOR_PROMPT),
-            HumanMessage(content=_snapshot(state)),
+            HumanMessage(content=_snapshot(state, round_number)),
         ]
     )
     preguntas = [q.strip() for q in verdict.preguntas if q.strip()]
+    # The budget is a contract with the PM, not a suggestion to the model.
+    preguntas = [] if final_round else preguntas[:MAX_QUESTIONS_PER_ROUND]
     update: dict = {
         "questions": preguntas,
         "decisiones": list(verdict.decisiones),
@@ -105,6 +125,7 @@ async def interrogate(state: RefineryState, llm: BaseChatModel) -> dict:
             razon=verdict.razon,
         ),
         "grilled": True,
+        "round_count": round_number,
         "last_agent": "intake",
         # The questions belong in the transcript: that is how the next round
         # knows what it already asked.

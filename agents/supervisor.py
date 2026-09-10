@@ -13,14 +13,14 @@ from langchain_core.messages import AIMessage, HumanMessage, SystemMessage
 from pydantic import BaseModel, Field
 
 from agents.text import message_text
-from config import MAX_STEPS
+from config import MAX_ROUNDS, MAX_STEPS
 from state import NextAgent, RefineryState
 
 SUPERVISOR_PROMPT = """You are the supervisor of a spec refinery.
 Do not search the corpus nor draft the spec. Pick the next agent.
 
 Rubric (in order, the first match wins):
-1. If the human asked to close (close_requested) -> FINISH.
+1. If the human asked to close, or the thread burned its round budget -> FINISH.
 2. If citations is empty -> retriever.
 3. If the interrogator has not grilled the PM this turn -> intake.
 4. Otherwise -> FINISH; each node runs at most once per turn, so never send
@@ -46,6 +46,7 @@ def apply_rubric(
     proposed: NextAgent,
     close_requested: bool,
     last_error: str = "",
+    rounds_exhausted: bool = False,
 ) -> NextAgent:
     """Hard rules on top of the LLM. The graph never sees an illegal next_agent.
 
@@ -58,7 +59,7 @@ def apply_rubric(
         return "FINISH"
     if step_count >= MAX_STEPS:
         return "FINISH"
-    if close_requested:
+    if close_requested or rounds_exhausted:
         return "FINISH"
     if citations_empty:
         return "retriever"
@@ -115,12 +116,16 @@ async def supervisor_turn(state: RefineryState, llm: BaseChatModel) -> dict:
     citations = state.get("citations") or []
     grilled = bool(state.get("grilled"))
     close_requested = bool(state.get("close_requested"))
+    rounds_exhausted = int(state.get("round_count") or 0) >= MAX_ROUNDS
 
     if last_error:
         rationale = f"There is a last_error: I do not retry the same node. {last_error}"
         next_agent: NextAgent = "FINISH"
     elif step_count >= MAX_STEPS:
         rationale = f"Hit the {MAX_STEPS}-step cap: closing to avoid looping."
+        next_agent = "FINISH"
+    elif rounds_exhausted:
+        rationale = f"The thread burned its {MAX_ROUNDS} rounds: freezing the spec."
         next_agent = "FINISH"
     else:
         decision = await llm.with_structured_output(SupervisorDecision).ainvoke(
@@ -136,6 +141,7 @@ async def supervisor_turn(state: RefineryState, llm: BaseChatModel) -> dict:
             proposed=decision.next_agent,
             close_requested=close_requested,
             last_error=last_error,
+            rounds_exhausted=rounds_exhausted,
         )
         rationale = decision.rationale
         if next_agent != decision.next_agent:

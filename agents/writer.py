@@ -7,6 +7,7 @@ from langchain_core.messages import AIMessage, HumanMessage, SystemMessage
 
 from agents.text import transcript_lines
 from catalog import SERVICE_IDS
+from config import MAX_ROUNDS
 from schemas import Decision, SpecDocument, SpecStatus
 from state import RefineryState, empty_spec
 
@@ -41,6 +42,13 @@ def _merge_decisions(state: RefineryState) -> list[Decision]:
     return merged
 
 
+def _is_frozen(state: RefineryState) -> bool:
+    """Closed on request, or out of rounds."""
+    return bool(state.get("close_requested")) or int(
+        state.get("round_count") or 0
+    ) >= MAX_ROUNDS
+
+
 def _estado(state: RefineryState, open_questions: int) -> SpecStatus:
     """The interrogator owns the verdict; the writer only carries it over.
 
@@ -53,16 +61,26 @@ def _estado(state: RefineryState, open_questions: int) -> SpecStatus:
         if prior is not None and prior.estado is not None:
             assessment = prior.estado
     estado = (assessment or _UNSCORED).model_copy()
+    if not _is_frozen(state):
+        return estado
+    # Closing is the human's call, and the round budget is a promise made to
+    # them up front. Either way the spec closes; the status stays honest about
+    # what was left open instead of refusing.
+    if estado.se_puede_cerrar:
+        estado.razon = "Cerrada sin puntos abiertos."
+        return estado
+    # The question count is zero on the last round (it asks nothing), so lead
+    # with vagueness there instead of claiming nothing was left open.
+    pendiente = (
+        f"{open_questions} pregunta(s) sin responder · vaguedad {estado.vaguedad}"
+        if open_questions
+        else f"vaguedad {estado.vaguedad}"
+    )
     if state.get("close_requested"):
-        # Closing is the human's call. The spec closes; the status stays
-        # honest about what was left open instead of refusing.
+        estado.razon = f"Cerrada a pedido tuyo, con {pendiente}."
+    else:
         estado.razon = (
-            "Cerrada a pedido tuyo, sin puntos abiertos."
-            if estado.se_puede_cerrar
-            else (
-                f"Cerrada a pedido tuyo con {open_questions} punto(s) sin "
-                f"resolver · vaguedad {estado.vaguedad}."
-            )
+            f"Cerrada: se agotaron las {MAX_ROUNDS} rondas, con {pendiente}."
         )
     return estado
 
@@ -98,7 +116,7 @@ async def writer_turn(state: RefineryState, llm: BaseChatModel) -> dict:
     spec = draft
     spec.pedido = ticket
     spec.choques = list(citations)
-    spec.preguntas = [] if close_requested else list(questions)
+    spec.preguntas = [] if _is_frozen(state) else list(questions)
     spec.decisiones = _merge_decisions(state)
     spec.servicios = [s for s in spec.servicios if s in SERVICE_IDS]
     spec.estado = _estado(state, len(questions))

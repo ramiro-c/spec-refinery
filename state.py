@@ -20,6 +20,8 @@ class RefineryState(MessagesState):
     # spec instead of recomputing a score of its own.
     assessment: SpecStatus | None
     grilled: bool
+    # Rounds of interrogation burned on this thread; persists across turns.
+    round_count: int
     spec: SpecDocument | None
     close_requested: bool
     last_agent: str
@@ -43,6 +45,7 @@ def initial_fields(ticket: str, *, close_requested: bool = False) -> dict:
         "decisiones": [],
         "assessment": None,
         "grilled": False,
+        "round_count": 0,
         "spec": empty_spec(ticket),
         "close_requested": close_requested,
         "last_agent": "",

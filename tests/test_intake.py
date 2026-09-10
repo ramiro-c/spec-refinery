@@ -6,6 +6,7 @@ from langchain_core.messages import AIMessage, HumanMessage
 from langchain_core.runnables import Runnable, RunnableLambda
 
 from agents.intake import interrogate
+from config import MAX_QUESTIONS_PER_ROUND, MAX_ROUNDS
 from demo import CYBER_TICKET
 from schemas import Citation, Decision
 from state import empty_spec, initial_fields
@@ -27,12 +28,11 @@ def _fake_llm(salida: dict, *, capturar: dict | None = None):
     return _ChatModelFake()
 
 
-async def test_interrogator_asks_as_many_questions_as_it_wants():
-    """No cap: the number of questions is the LLM's call, not the system's."""
-    preguntas = [f"¿Pregunta {i}?" for i in range(1, 8)]
+async def test_interrogator_respects_the_question_budget():
+    """The budget is a promise shown to the PM, not a hint to the model."""
     llm = _fake_llm(
         {
-            "preguntas": preguntas,
+            "preguntas": [f"¿Pregunta {i}?" for i in range(1, 8)],
             "se_puede_cerrar": False,
             "vaguedad": 8,
             "razon": "falta casi todo",
@@ -40,9 +40,45 @@ async def test_interrogator_asks_as_many_questions_as_it_wants():
     )
     out = await interrogate({**initial_fields(CYBER_TICKET)}, llm)
 
-    assert out["questions"] == preguntas
+    assert len(out["questions"]) == MAX_QUESTIONS_PER_ROUND
+    assert out["questions"][0] == "¿Pregunta 1?"
     assert out["assessment"].vaguedad == 8
     assert out["grilled"] is True
+    assert out["round_count"] == 1
+
+
+async def test_the_final_round_asks_nothing_and_just_rules():
+    llm = _fake_llm(
+        {
+            "preguntas": ["¿Una más?"],
+            "se_puede_cerrar": False,
+            "vaguedad": 5,
+            "razon": "se acabaron las rondas",
+        }
+    )
+    state = {**initial_fields(CYBER_TICKET), "round_count": MAX_ROUNDS - 1}
+    out = await interrogate(state, llm)
+
+    assert out["questions"] == []
+    assert out["round_count"] == MAX_ROUNDS
+
+
+async def test_the_round_budget_reaches_the_prompt():
+    capturar: dict = {}
+    llm = _fake_llm(
+        {
+            "preguntas": [],
+            "se_puede_cerrar": False,
+            "vaguedad": 5,
+            "razon": "x",
+        },
+        capturar=capturar,
+    )
+    await interrogate({**initial_fields(CYBER_TICKET), "round_count": 1}, llm)
+
+    prompt = capturar["mensajes"][-1].content
+    assert f"Round 2 of {MAX_ROUNDS}" in prompt
+    assert f"up to {MAX_QUESTIONS_PER_ROUND} questions" in prompt
 
 
 async def test_interrogator_questions_land_in_the_transcript():

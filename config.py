@@ -23,6 +23,10 @@ CHECKPOINT_PATH = _env_str("CHECKPOINT_PATH", str(BASE_DIR / "checkpoints.sqlite
 CORPUS_DIR = BASE_DIR / "corpus"
 CHROMA_DIR = BASE_DIR / ".chroma"
 MAX_STEPS = 8
+# Interrogation budget, shown to the PM in the UI: at most MAX_QUESTIONS_PER_ROUND
+# questions per round, and at most MAX_ROUNDS rounds before the spec is frozen.
+MAX_QUESTIONS_PER_ROUND = 3
+MAX_ROUNDS = 5
 RECURSION_LIMIT = 20
 TOP_K = 5
 EMBEDDING_MODEL = _env_str("EMBEDDING_MODEL", "sentence-transformers/all-MiniLM-L6-v2")
