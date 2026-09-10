@@ -274,6 +274,11 @@ def _render_intro() -> None:
         "- **Cerrás vos** cuando quieras: el botón o pedíselo al chat"
     )
     st.caption("La spec se va reescribiendo sola en el panel de la derecha.")
+    st.markdown(
+        "**Si no se te ocurre nada**, el ticket de demo pide *comprar ahora* "
+        "sin pasar por el carrito para Cyber Monday — y en Andes el precio se "
+        "cierra justamente en el carrito."
+    )
 
 
 def _render_round_meter() -> None:
@@ -292,44 +297,11 @@ def _render_round_meter() -> None:
     st.progress(min(ronda / total, 1.0) if total else 0.0)
 
 
-def _render_sidebar() -> None:
-    """Explicación para profes: no come el alto del chat."""
-    st.markdown("**Qué es**")
-    st.caption(
-        "Un PM pega un ticket vago. El sistema busca las reglas de Marketplace "
-        "Andes y lo interroga ronda a ronda hasta que la spec sea "
-        "implementable, discutiendo cuando el pedido choca con una regla. "
-        "Las reglas del pedido no son ley: si el PM decide cambiarlas, queda "
-        "anotado como decisión."
-    )
-    st.markdown("**Caso de demo**")
-    st.caption(
-        "Cyber Monday pide *comprar ahora* sin pasar por el carrito. "
-        "En Andes el precio se cierra en el carrito."
-    )
-    with st.expander("Ticket de demo"):
-        st.write(CYBER_TICKET)
-    st.markdown("**Límites**")
-    st.caption(
-        f"{st.session_state.max_preguntas} preguntas por ronda · "
-        f"{st.session_state.max_rondas} rondas como máximo · "
-        "cerrar lo decide el humano"
-    )
-    st.caption(f"API: `{API_URL}`")
-
-
 def main() -> None:
     """Pantalla principal: dos columnas según la spec."""
-    st.set_page_config(
-        page_title="Spec Refinery",
-        layout="wide",
-        initial_sidebar_state="expanded",
-    )
+    st.set_page_config(page_title="Spec Refinery", layout="wide")
     _init_session()
     _drain_pending()
-
-    with st.sidebar:
-        _render_sidebar()
 
     st.title("Spec Refinery")
     if st.session_state.api_error:
@@ -374,6 +346,8 @@ def main() -> None:
     # falls below the fold. At top level it stays pinned to the viewport.
     if prompt := st.chat_input("Pegá el ticket o respondé una pregunta"):
         _queue_prompt(prompt)
+
+    st.caption(f"La UI es sólo la piel: el sistema es la API en `{API_URL}`.")
 
 
 if __name__ == "__main__":
