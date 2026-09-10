@@ -23,7 +23,11 @@ from schemas import Citation
 RRF_C = 60
 RRF_WEIGHTS = [0.5, 0.5]
 COLLECTION_NAME = "spec-refinery"
-EXCERPT_CHARS = 280
+# Documents are ingested whole (no splitter), and the largest rule in the
+# corpus is ~1.1 KB, so citations carry the full rule: the panel exists to be
+# read. This is only a safety valve against a pathological document blowing up
+# the interrogator prompt — nothing in the corpus comes close to it.
+MAX_EXCERPT_CHARS = 2000
 
 # Lazy production ensemble (built on first retrieval, not at import).
 _ensemble: EnsembleRetriever | None = None
@@ -100,13 +104,14 @@ def _production_retriever() -> EnsembleRetriever:
     return _ensemble
 
 
-def _excerpt(text: str, limit: int = EXCERPT_CHARS) -> str:
-    """A readable preview: never cut mid-word, and say when it was cut.
+def _excerpt(text: str, limit: int = MAX_EXCERPT_CHARS) -> str:
+    """The rule as retrieved, whole. Cut only if it is absurdly long.
 
-    Chunks carry their own line breaks, which render as stray paragraphs in a
-    one-line preview, so the text is collapsed to a single line first.
+    Line breaks are kept: these are full documents, and their paragraphs are
+    part of how the rule reads. If a cut is ever needed it lands on a
+    boundary, never mid-word.
     """
-    clean = " ".join((text or "").split())
+    clean = (text or "").strip()
     if len(clean) <= limit:
         return clean
     window = clean[:limit]

@@ -1,5 +1,7 @@
+import pathlib
+
 from langchain_core.documents import Document
-from retriever import EXCERPT_CHARS, _excerpt, retrieve
+from retriever import MAX_EXCERPT_CHARS, _excerpt, retrieve
 
 
 class _Stub:
@@ -35,16 +37,24 @@ def test_excerpt_keeps_short_content_intact():
     )
 
 
-def test_excerpt_collapses_the_line_breaks_of_a_chunk():
-    assert _excerpt("Buyer — compra.\n\nCarrito — contiene ítems.") == (
-        "Buyer — compra. Carrito — contiene ítems."
-    )
+def test_excerpt_keeps_a_whole_rule_untouched():
+    """The panel exists to read the rule: a rule-sized document is not cut."""
+    rule = pathlib.Path("corpus/rules/adr-cart-price.md").read_text(encoding="utf-8")
+    assert len(rule) > 900
+    assert _excerpt(rule) == rule.strip()
 
 
+def test_excerpt_preserves_the_paragraphs_of_the_rule():
+    text = "Buyer — compra.\n\nCarrito — contiene ítems."
+    assert _excerpt(text) == text
+
+
+# The cuts below only happen at the safety valve, so they pass an explicit
+# small limit; real rules are never trimmed.
 def test_excerpt_never_cuts_a_word_in_half():
     """The bug: a hard slice produced tails like "alineado c"."""
     text = "palabra " * 200
-    out = _excerpt(text)
+    out = _excerpt(text, limit=280)
     assert out.endswith("…")
     assert not out.rstrip("…").endswith("palabr")
     assert all(word == "palabra" for word in out.rstrip("…").split())
@@ -57,9 +67,9 @@ def test_excerpt_prefers_a_sentence_boundary_over_an_ellipsis():
         "en un paso posterior al cierre del carrito, nunca antes de que el "
         "buyer elija un método. "
     )
-    assert len(first) > EXCERPT_CHARS // 2  # otherwise the cut loses too much
+    assert len(first) > 280 // 2  # otherwise the cut loses too much
     text = first + "relleno " * 100
-    out = _excerpt(text)
+    out = _excerpt(text, limit=280)
     assert out == first.strip()
     assert "…" not in out
 
@@ -67,14 +77,14 @@ def test_excerpt_prefers_a_sentence_boundary_over_an_ellipsis():
 def test_excerpt_ignores_a_sentence_that_ends_too_early():
     """Cutting on it would throw away most of the excerpt, so keep reading."""
     text = "Corta. " + "relleno " * 100
-    out = _excerpt(text)
+    out = _excerpt(text, limit=280)
     assert out.endswith("…")
     assert len(out) > 200
 
 
-def test_excerpt_stays_within_the_limit():
-    out = _excerpt("dato " * 500)
-    assert len(out) <= EXCERPT_CHARS + 1  # +1 for the ellipsis
+def test_excerpt_stays_within_the_safety_valve():
+    out = _excerpt("dato " * 2000)
+    assert len(out) <= MAX_EXCERPT_CHARS + 1  # +1 for the ellipsis
 
 
 def test_excerpt_does_not_pass_a_semicolon_off_as_a_full_stop():
@@ -83,6 +93,6 @@ def test_excerpt_does_not_pass_a_semicolon_off_as_a_full_stop():
         "Cualquier cambio de flujo o de UI en esas fechas debe pasar por flag, "
         "sin excepciones para el equipo de checkout ni para promociones; "
     ) + "y la continuación sigue acá " * 20
-    out = _excerpt(text)
+    out = _excerpt(text, limit=280)
     assert not out.endswith(";")
     assert out.endswith("…")
