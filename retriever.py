@@ -23,6 +23,7 @@ from schemas import Citation
 RRF_C = 60
 RRF_WEIGHTS = [0.5, 0.5]
 COLLECTION_NAME = "spec-refinery"
+EXCERPT_CHARS = 280
 
 # Lazy production ensemble (built on first retrieval, not at import).
 _ensemble: EnsembleRetriever | None = None
@@ -99,12 +100,32 @@ def _production_retriever() -> EnsembleRetriever:
     return _ensemble
 
 
+def _excerpt(text: str, limit: int = EXCERPT_CHARS) -> str:
+    """A readable preview: never cut mid-word, and say when it was cut.
+
+    Chunks carry their own line breaks, which render as stray paragraphs in a
+    one-line preview, so the text is collapsed to a single line first.
+    """
+    clean = " ".join((text or "").split())
+    if len(clean) <= limit:
+        return clean
+    window = clean[:limit]
+    # Only a full stop closes a thought. A semicolon does not, so cutting
+    # there and presenting it as complete would misread as a broken excerpt.
+    sentence_end = window.rfind(". ")
+    if sentence_end >= limit // 2:
+        return window[: sentence_end + 1]
+    word_end = window.rfind(" ")
+    trimmed = window[:word_end] if word_end > 0 else window
+    return trimmed.rstrip(" ,;:.—-") + "…"
+
+
 def _as_citation(doc: Document) -> Citation:
     meta = doc.metadata or {}
     return Citation(
         document_id=str(meta.get("document_id") or ""),
         title=str(meta.get("title") or ""),
-        excerpt=doc.page_content[:240],
+        excerpt=_excerpt(doc.page_content),
     )
 
 
