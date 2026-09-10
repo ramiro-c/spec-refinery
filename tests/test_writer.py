@@ -7,7 +7,7 @@ from langchain_core.runnables import Runnable, RunnableLambda
 
 from agents.writer import writer_turn
 from demo import CYBER_TICKET
-from schemas import SpecStatus
+from schemas import Decision, SpecStatus
 from state import empty_spec, initial_fields
 
 
@@ -158,7 +158,8 @@ async def test_writer_falls_back_to_the_last_verdict_on_an_explicit_close():
 
     assert out["spec"].preguntas == []
     assert out["spec"].estado.vaguedad == 6
-    assert out["spec"].estado.razon == "quedaban huecos"
+    # The document closes; the status stays honest about what was left open.
+    assert "Cerrada a pedido tuyo" in out["spec"].estado.razon
 
 
 async def test_writer_drops_services_outside_the_catalog():
@@ -176,3 +177,58 @@ async def test_writer_drops_services_outside_the_catalog():
     out = await writer_turn(state, modelo)
 
     assert out["spec"].servicios == ["cart-service"]
+
+
+async def test_writer_accumulates_decisions_across_rounds():
+    """A rule the PM overruled stays settled instead of resurfacing."""
+    modelo = _modelo_llm_fake(
+        {
+            "pedido": "x",
+            "que_entendimos": "y",
+            "criterios": [],
+            "preguntas": [],
+            "estado": {"se_puede_cerrar": False, "vaguedad": 3, "razon": "llm"},
+        }
+    )
+    prior = empty_spec(CYBER_TICKET)
+    prior.decisiones = [
+        Decision(tema="reserva de stock", decision="se reserva al confirmar")
+    ]
+    state = {
+        **initial_fields(CYBER_TICKET),
+        "spec": prior,
+        "decisiones": [
+            Decision(
+                tema="adr-cart-price",
+                decision="se deprecia para el flujo nuevo",
+                impacto="hay que reescribir la ADR",
+            )
+        ],
+    }
+    out = await writer_turn(state, modelo)
+
+    temas = [d.tema for d in out["spec"].decisiones]
+    assert temas == ["reserva de stock", "adr-cart-price"]
+
+
+async def test_writer_lets_a_new_decision_supersede_the_same_topic():
+    modelo = _modelo_llm_fake(
+        {
+            "pedido": "x",
+            "que_entendimos": "y",
+            "criterios": [],
+            "preguntas": [],
+            "estado": {"se_puede_cerrar": False, "vaguedad": 3, "razon": "llm"},
+        }
+    )
+    prior = empty_spec(CYBER_TICKET)
+    prior.decisiones = [Decision(tema="Alcance", decision="todos los SKU")]
+    state = {
+        **initial_fields(CYBER_TICKET),
+        "spec": prior,
+        "decisiones": [Decision(tema="alcance", decision="solo SKU 1P de electro")],
+    }
+    out = await writer_turn(state, modelo)
+
+    assert len(out["spec"].decisiones) == 1
+    assert out["spec"].decisiones[0].decision == "solo SKU 1P de electro"

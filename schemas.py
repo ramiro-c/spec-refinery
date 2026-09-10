@@ -26,6 +26,26 @@ class SpecStatus(BaseModel):
 class Interrogation(BaseModel):
     """What the interrogator decided after grilling the PM this round."""
 
+    # First on purpose: it is a fact about the human's message, and answering
+    # it before reasoning about quality keeps the two from bleeding together.
+    human_wants_close: bool = Field(
+        default=False,
+        description=(
+            "Did the human ASK to close the spec in their last message? This "
+            "is a fact about what they wrote, never your opinion about whether "
+            "closing is wise. If they asked, it is true even when the spec is "
+            "incomplete: you have no authority to refuse. Domain talk about "
+            "closing something (a price closing in the cart) is not a request."
+        ),
+    )
+    decisiones: list[Decision] = Field(
+        default_factory=list,
+        description=(
+            "Arguments the PM settled in this round, including any company "
+            "rule they decided to change, deprecate or except. Record it here "
+            "and stop asking about it."
+        ),
+    )
     preguntas: list[str] = Field(
         default_factory=list,
         description=(
@@ -46,19 +66,31 @@ class Interrogation(BaseModel):
         description="0 when nothing is left to clarify, 10 for a one-line wish.",
     )
     razon: str = Field(description="Why, in one sentence, in Spanish.")
-    human_wants_close: bool = Field(
-        default=False,
+
+
+class Decision(BaseModel):
+    """Something the PM settled, including overruling a company rule.
+
+    A retrieved rule is evidence, not a veto: the PM may adapt the request to
+    it, decide to change it, or accept a scoped exception. Whichever way it
+    goes, it stops being an open question and becomes part of the spec.
+    """
+
+    tema: str = Field(description="What was being argued, in a few words.")
+    decision: str = Field(description="What the PM decided.")
+    impacto: str = Field(
+        default="",
         description=(
-            "True only when the PM asks to stop refining and close the spec. "
-            "Domain talk about closing something (a price closing in the cart) "
-            "is not a request to close."
+            "What this costs: rules to rewrite, services to touch, risks taken."
         ),
     )
+
 
 class SpecDocument(BaseModel):
     pedido: str
     que_entendimos: str = ""
     choques: list[Citation] = Field(default_factory=list)
+    decisiones: list[Decision] = Field(default_factory=list)
     servicios: list[str] = Field(default_factory=list)
     criterios: list[AcceptanceCriterion] = Field(default_factory=list)
     preguntas: list[str] = Field(default_factory=list)

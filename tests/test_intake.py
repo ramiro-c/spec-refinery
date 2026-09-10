@@ -7,8 +7,8 @@ from langchain_core.runnables import Runnable, RunnableLambda
 
 from agents.intake import interrogate
 from demo import CYBER_TICKET
-from schemas import Citation
-from state import initial_fields
+from schemas import Citation, Decision
+from state import empty_spec, initial_fields
 
 
 def _fake_llm(salida: dict, *, capturar: dict | None = None):
@@ -126,3 +126,76 @@ async def test_interrogator_does_not_touch_close_when_the_pm_did_not_ask():
     out = await interrogate({**initial_fields(CYBER_TICKET)}, llm)
 
     assert "close_requested" not in out
+
+
+async def test_interrogator_records_a_rule_the_pm_overruled():
+    """A retrieved rule is evidence, not law: the PM can decide to change it."""
+    llm = _fake_llm(
+        {
+            "human_wants_close": False,
+            "decisiones": [
+                {
+                    "tema": "adr-cart-price",
+                    "decision": "se deprecia para el flujo de Cyber Monday",
+                    "impacto": "hay que reescribir la ADR",
+                }
+            ],
+            "preguntas": ["¿Y las promos, dónde se aplican?"],
+            "se_puede_cerrar": False,
+            "vaguedad": 3,
+            "razon": "queda el tema promos",
+        }
+    )
+    out = await interrogate({**initial_fields(CYBER_TICKET)}, llm)
+
+    assert [d.tema for d in out["decisiones"]] == ["adr-cart-price"]
+
+
+async def test_interrogator_is_told_what_is_already_settled():
+    """Settled topics reach the prompt so they are not re-litigated."""
+    capturar: dict = {}
+    llm = _fake_llm(
+        {
+            "human_wants_close": False,
+            "decisiones": [],
+            "preguntas": [],
+            "se_puede_cerrar": True,
+            "vaguedad": 0,
+            "razon": "listo",
+        },
+        capturar=capturar,
+    )
+    spec = empty_spec(CYBER_TICKET)
+    spec.decisiones = [
+        Decision(tema="adr-cart-price", decision="deprecada para el flujo nuevo")
+    ]
+    await interrogate({**initial_fields(CYBER_TICKET), "spec": spec}, llm)
+
+    prompt = capturar["mensajes"][-1].content
+    assert "Already settled" in prompt
+    assert "adr-cart-price: deprecada para el flujo nuevo" in prompt
+
+
+async def test_close_is_the_humans_call_even_on_an_unfinished_spec():
+    """The interrogator may judge the spec unready and still must let it close."""
+    llm = _fake_llm(
+        {
+            "human_wants_close": True,
+            "decisiones": [],
+            "preguntas": ["¿Y el stock?"],
+            "se_puede_cerrar": False,
+            "vaguedad": 7,
+            "razon": "quedan huecos, pero el PM pidió cerrar",
+        }
+    )
+    out = await interrogate({**initial_fields(CYBER_TICKET)}, llm)
+
+    assert out["close_requested"] is True
+    assert out["assessment"].se_puede_cerrar is False
+
+
+def test_close_flag_is_answered_before_any_quality_judgement():
+    """Field order matters: the fact must not be contaminated by the opinion."""
+    from schemas import Interrogation
+
+    assert list(Interrogation.model_fields)[0] == "human_wants_close"

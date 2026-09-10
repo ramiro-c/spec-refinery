@@ -68,7 +68,8 @@ def _closing_reply(spec: dict) -> str:
         return "Spec cerrada. No quedaron preguntas abiertas ni huecos."
     return (
         f"Spec cerrada a pedido tuyo, pero queda vaguedad {vaguedad}. "
-        "Mirá el panel de la derecha antes de pasarla a desarrollo."
+        "Cerrar lo decidís vos; mirá el panel de la derecha antes de pasarla "
+        "a desarrollo."
     )
 
 
@@ -183,6 +184,17 @@ def _render_spec(spec: dict) -> None:
     if choques:
         for citation in choques:
             _render_citation(citation)
+    else:
+        st.write("—")
+
+    st.subheader("Decisiones")
+    decisiones = spec.get("decisiones") or []
+    if decisiones:
+        for decision in decisiones:
+            st.markdown(f"**{decision.get('tema', '—')}** — {decision.get('decision', '')}")
+            impacto = str(decision.get("impacto") or "").strip()
+            if impacto:
+                st.caption(f"Impacto: {impacto}")
     else:
         st.write("—")
 
