@@ -69,7 +69,7 @@ def _utcnow() -> dt.datetime:
 def _qa_ticket() -> str:
     """Cyber Monday ticket, same one used by scoring/demo."""
     try:
-        from scoring import CYBER_TICKET
+        from demo import CYBER_TICKET
 
         return CYBER_TICKET
     except Exception:

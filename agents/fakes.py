@@ -1,10 +1,21 @@
-"""Nodos dummy para QA / Docker sin LLM ni embeddings."""
+"""Dummy nodes for QA / Docker without an LLM or embeddings.
+
+These are deliberately fixed: they exist so the API can be exercised without
+credentials. The real graph decides everything with the LLM.
+"""
 
 from __future__ import annotations
 
-from schemas import Citation
-from scoring import rank_questions
+from langchain_core.messages import AIMessage
+
+from schemas import Citation, SpecStatus
 from state import RefineryState
+
+FAKE_QUESTIONS = [
+    "¿«Comprar ahora» saltea el carrito de verdad o solo acorta la pantalla?",
+    "¿Vale para todos los productos o solo algunos?",
+    "¿Qué es «más rápido»: menos clicks, menos segundos, más conversión?",
+]
 
 
 def fake_supervisor(state: RefineryState) -> dict:
@@ -13,7 +24,7 @@ def fake_supervisor(state: RefineryState) -> dict:
     step = int(state.get("step_count") or 0) + 1
     nxt = apply_rubric(
         citations_empty=not state.get("citations"),
-        questions_empty=not state.get("questions"),
+        grilled=bool(state.get("grilled")),
         step_count=step,
         proposed="FINISH",
         close_requested=bool(state.get("close_requested")),
@@ -36,23 +47,37 @@ def fake_retriever(state: RefineryState) -> dict:
 
 
 def fake_intake(state: RefineryState) -> dict:
-    qs = rank_questions(state["ticket"], state.get("citations") or [])
-    return {"questions": qs, "last_agent": "intake"}
+    return {
+        "questions": list(FAKE_QUESTIONS),
+        "assessment": SpecStatus(
+            se_puede_cerrar=False,
+            vaguedad=5,
+            razon="grafo fake (QA, sin LLM)",
+        ),
+        "grilled": True,
+        "messages": [AIMessage(content="\n".join(FAKE_QUESTIONS), name="intake")],
+        "last_agent": "intake",
+    }
 
 
 def fake_writer(state: RefineryState) -> dict:
     spec = state["spec"]
     ticket = state.get("ticket") or ""
-    questions = list(state.get("questions") or [])
-    citations = list(state.get("citations") or [])
+    close_requested = bool(state.get("close_requested"))
     spec.pedido = ticket
     spec.que_entendimos = (
         "Checkout «comprar ahora» que no pasa por el carrito (demo QA)."
         if ticket
         else spec.que_entendimos
     )
-    spec.preguntas = [] if state.get("close_requested") else questions
-    spec.choques = citations
+    spec.preguntas = [] if close_requested else list(state.get("questions") or [])
+    spec.choques = list(state.get("citations") or [])
+    assessment = state.get("assessment")
+    if assessment is not None:
+        spec.estado = assessment.model_copy()
     spec.estado.razon = "grafo fake (QA, sin LLM)"
-    spec.estado.se_puede_cerrar = bool(state.get("close_requested")) and spec.estado.vaguedad == 0
+    if close_requested:
+        # QA closes the thread and expects a clean, closable document.
+        spec.estado.se_puede_cerrar = True
+        spec.estado.vaguedad = 0
     return {"spec": spec, "last_agent": "writer"}

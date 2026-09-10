@@ -140,7 +140,12 @@ async def continue_thread(
     body: MessageRequest,
     graph: CompiledStateGraph = Depends(get_graph),
 ) -> SpecResponse:
-    """Continue: human message on an existing thread."""
+    """Continue: human message on an existing thread.
+
+    The human can also close from the chat ("cerrá la spec"): the interrogator
+    reads the intent and raises ``close_requested`` mid-turn. The explicit
+    /close endpoint stays available for the UI button.
+    """
     ticket = await _require_thread(graph, thread_id)
     _, final = await _run_turn_or_503(
         graph,

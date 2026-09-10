@@ -13,6 +13,10 @@ class RefineryState(MessagesState):
     next_agent: NextAgent
     citations: list[Citation]
     questions: list[str]
+    # The interrogator's verdict for this thread; the writer copies it into the
+    # spec instead of recomputing a score of its own.
+    assessment: SpecStatus | None
+    grilled: bool
     spec: SpecDocument | None
     close_requested: bool
     last_agent: str
@@ -33,6 +37,8 @@ def initial_fields(ticket: str, *, close_requested: bool = False) -> dict:
         "next_agent": "FINISH",
         "citations": [],
         "questions": [],
+        "assessment": None,
+        "grilled": False,
         "spec": empty_spec(ticket),
         "close_requested": close_requested,
         "last_agent": "",

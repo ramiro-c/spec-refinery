@@ -7,11 +7,20 @@ import os
 import httpx
 import streamlit as st
 
-from scoring import CYBER_TICKET
+from demo import CYBER_TICKET
 
 API_URL = os.getenv("SPEC_REFINERY_API", "http://127.0.0.1:8000").rstrip("/")
 HTTP_TIMEOUT = 120.0
 PANEL_HEIGHT = 640
+
+
+def _collision_asked_about(spec: dict, preguntas: list[str]) -> dict | None:
+    """La cita que alguna pregunta de este turno realmente menciona."""
+    for citation in spec.get("choques") or []:
+        doc_id = str(citation.get("document_id") or "")
+        if doc_id and any(doc_id in pregunta for pregunta in preguntas):
+            return citation
+    return None
 
 
 def _assistant_reply(spec: dict) -> str:
@@ -28,17 +37,39 @@ def _assistant_reply(spec: dict) -> str:
         razon = str(estado.get("razon") or "").strip()
         return razon or "No tengo preguntas nuevas. Seguí o cerrá la spec."
 
-    choques = spec.get("choques") or []
-    if choques:
-        first = choques[0]
-        label = first.get("title") or first.get("document_id") or "una regla de Andes"
-        lead = f"Hay un choque con {label}."
+    if len(preguntas) == 1:
+        header = "Me queda una pregunta."
     else:
-        lead = "Necesito aclarar el pedido."
+        header = f"Me quedan {len(preguntas)} preguntas."
+
+    # Only announce the collision when this turn actually asks about it;
+    # otherwise the lead advertises a document none of the questions mention.
+    collision = _collision_asked_about(spec, preguntas)
+    if collision is not None:
+        label = (
+            collision.get("title")
+            or collision.get("document_id")
+            or "una regla de Andes"
+        )
+        lead = f"Hay un choque con {label}. {header}"
+    else:
+        lead = f"Necesito aclarar el pedido. {header}"
     numbered = "\n".join(
         f"{idx}. {pregunta}" for idx, pregunta in enumerate(preguntas, start=1)
     )
     return f"{lead}\n\n{numbered}"
+
+
+def _closing_reply(spec: dict) -> str:
+    """Turno de cierre: la spec queda congelada, con o sin huecos."""
+    estado = spec.get("estado") or {}
+    vaguedad = estado.get("vaguedad", 0)
+    if estado.get("se_puede_cerrar"):
+        return "Spec cerrada. No quedaron preguntas abiertas ni huecos."
+    return (
+        f"Spec cerrada a pedido tuyo, pero queda vaguedad {vaguedad}. "
+        "Mirá el panel de la derecha antes de pasarla a desarrollo."
+    )
 
 
 def _queue_prompt(prompt: str) -> None:
@@ -72,11 +103,13 @@ def _drain_pending() -> None:
             _execute_prompt(prompt)
     if st.session_state.pending_close:
         st.session_state.pending_close = False
+        st.session_state.messages.append(("user", "Cerrá la spec."))
         try:
-            payload = _post_close(st.session_state.thread_id)
+            with st.spinner("Cerrando spec..."):
+                payload = _post_close(st.session_state.thread_id)
             spec = payload["spec"]
             st.session_state.spec = spec
-            st.session_state.messages.append(("assistant", _assistant_reply(spec)))
+            st.session_state.messages.append(("assistant", _closing_reply(spec)))
         except httpx.HTTPError as error:
             st.session_state.api_error = f"Error al cerrar: {error}"
 
@@ -171,7 +204,7 @@ def _render_spec(spec: dict) -> None:
     else:
         st.write("—")
 
-    st.subheader("Preguntas (3)")
+    st.subheader("Preguntas abiertas")
     preguntas = spec.get("preguntas") or []
     if preguntas:
         for idx, pregunta in enumerate(preguntas, start=1):
@@ -192,8 +225,11 @@ def _render_sidebar() -> None:
     """Explicación para profes: no come el alto del chat."""
     st.markdown("**Qué es**")
     st.caption(
-        "Un PM pega un ticket. El chat busca reglas de Marketplace Andes, "
-        "pregunta (hasta 3) y reescribe la spec. Cerrar lo decide el humano."
+        "Un PM pega un ticket vago. El sistema busca las reglas de Marketplace "
+        "Andes y lo interroga ronda a ronda: pregunta lo que haga falta hasta "
+        "que la spec sea implementable, y discute cuando el pedido choca con "
+        "una regla. Cerrar lo decide el humano, con el botón o pidiéndoselo "
+        "al chat."
     )
     st.markdown("**Caso de demo**")
     st.caption(
@@ -227,31 +263,43 @@ def main() -> None:
 
     with col_chat:
         st.subheader("Conversación")
-        if st.session_state.thread_id is None:
+        if not st.session_state.messages:
+            st.info(
+                "Escribí abajo un pedido vago, como lo mandaría un PM. "
+                "El sistema busca las reglas de Andes y te interroga hasta que "
+                "la spec sea implementable. Cerrás vos, cuando quieras."
+            )
             if st.button("Usar el ticket de demo", type="secondary"):
                 _queue_prompt(CYBER_TICKET)
-        with st.container(height=PANEL_HEIGHT, border=False):
-            for role, text in st.session_state.messages:
-                with st.chat_message(role):
-                    st.write(text)
-
-        if prompt := st.chat_input("Pegá el ticket o respondé una pregunta"):
-            _queue_prompt(prompt)
+        else:
+            with st.container(height=PANEL_HEIGHT, border=False):
+                for role, text in st.session_state.messages:
+                    with st.chat_message(role):
+                        st.write(text)
 
         if st.session_state.thread_id:
+            st.caption(
+                "Para cerrar: tocá el botón o escribilo en el chat "
+                "(«cerrá la spec»)."
+            )
             if st.button("Cerrar spec", type="primary"):
                 st.session_state.pending_close = True
                 st.rerun()
 
     with col_spec:
         st.subheader("Spec viva")
-        with st.container(height=PANEL_HEIGHT, border=False):
-            if st.session_state.spec:
+        if st.session_state.spec:
+            with st.container(height=PANEL_HEIGHT, border=False):
                 _render_spec(st.session_state.spec)
-            else:
-                st.info(
-                    "Todavía no hay spec. Usá el ticket de demo o pegá uno propio en el chat."
-                )
+        else:
+            st.info(
+                "Todavía no hay spec. Mandá un ticket en el chat y se arma acá."
+            )
+
+    # Top-level on purpose: inside a column Streamlit renders it inline and it
+    # falls below the fold. At top level it stays pinned to the viewport.
+    if prompt := st.chat_input("Pegá el ticket o respondé una pregunta"):
+        _queue_prompt(prompt)
 
 
 if __name__ == "__main__":

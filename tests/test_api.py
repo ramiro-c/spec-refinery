@@ -10,7 +10,7 @@ from fastapi.testclient import TestClient
 from agents.fakes import fake_intake, fake_retriever, fake_supervisor, fake_writer
 from checkpoint import close_checkpointer, create_checkpointer
 from graph import build_graph
-from scoring import CYBER_TICKET
+from demo import CYBER_TICKET
 
 
 def _build_test_graph(tmp_path):
@@ -65,3 +65,25 @@ def test_start_continue_close_and_unknown_thread(client: TestClient):
     missing_close = client.post("/threads/does-not-exist/close")
     assert missing_close.status_code == 404
     assert missing_close.json() == {"detail": "thread no existe"}
+
+
+def test_a_plain_answer_keeps_the_thread_open(client: TestClient):
+    """Only the interrogator (or /close) closes; an answer never does."""
+    thread_id = client.post("/threads", json={"ticket": CYBER_TICKET}).json()["thread_id"]
+
+    spec = client.post(
+        f"/threads/{thread_id}/messages",
+        json={"content": "todavía no cierres, falta definir el alcance"},
+    ).json()["spec"]
+
+    assert spec["preguntas"]
+
+
+def test_close_reports_the_last_verdict(client: TestClient):
+    """Closing freezes the document and keeps an honest readiness signal."""
+    thread_id = client.post("/threads", json={"ticket": CYBER_TICKET}).json()["thread_id"]
+
+    spec = client.post(f"/threads/{thread_id}/close").json()["spec"]
+
+    assert spec["preguntas"] == []
+    assert "vaguedad" in spec["estado"]

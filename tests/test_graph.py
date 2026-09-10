@@ -3,7 +3,7 @@
 from __future__ import annotations
 
 from langchain_core.messages import HumanMessage
-from scoring import CYBER_TICKET
+from demo import CYBER_TICKET
 from agents.fakes import fake_intake, fake_retriever, fake_supervisor, fake_writer
 from graph import build_graph, run_turn
 
@@ -36,3 +36,12 @@ async def test_close_skips_to_writer():
     assert "retriever" not in hops
     assert hops[-1] == "writer"
     assert final["spec"].preguntas == []
+
+
+async def test_turn_visits_each_node_at_most_once():
+    """A turn is retriever -> intake -> writer; no node repeats."""
+    g = _graph()
+    hops, _ = await run_turn(g, CYBER_TICKET, [HumanMessage(content=CYBER_TICKET)])
+    assert hops.count("retriever") == 1
+    assert hops.count("intake") == 1
+    assert hops.count("writer") == 1

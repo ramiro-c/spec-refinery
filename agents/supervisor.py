@@ -20,10 +20,12 @@ SUPERVISOR_PROMPT = """You are the supervisor of a spec refinery.
 Do not search the corpus nor draft the spec. Pick the next agent.
 
 Rubric (in order, the first match wins):
-1. If citations is empty -> retriever.
-2. If there are citations and this turn's questions are empty -> intake before FINISH.
-3. If the human asked to close (close_requested) -> FINISH.
-4. Never pick an agent that does not exist. Options: retriever, intake, FINISH.
+1. If the human asked to close (close_requested) -> FINISH.
+2. If citations is empty -> retriever.
+3. If the interrogator has not grilled the PM this turn -> intake.
+4. Otherwise -> FINISH; each node runs at most once per turn, so never send
+   the turn back to retriever or intake.
+5. Never pick an agent that does not exist. Options: retriever, intake, FINISH.
 
 Answer only with next_agent and a short rationale (one sentence).
 """
@@ -39,13 +41,19 @@ class SupervisorDecision(BaseModel):
 def apply_rubric(
     *,
     citations_empty: bool,
-    questions_empty: bool,
+    grilled: bool,
     step_count: int,
     proposed: NextAgent,
     close_requested: bool,
     last_error: str = "",
 ) -> NextAgent:
-    """Hard rules on top of the LLM. The graph never sees an illegal next_agent."""
+    """Hard rules on top of the LLM. The graph never sees an illegal next_agent.
+
+    ``proposed`` is the LLM's pick. It is honoured only while it does not
+    break a hard rule; each node runs at most once per turn, so once the
+    retriever and the interrogator have produced output the turn always ends
+    at the writer. The divergence is reported in the supervisor's rationale.
+    """
     if last_error.strip():
         return "FINISH"
     if step_count >= MAX_STEPS:
@@ -54,11 +62,12 @@ def apply_rubric(
         return "FINISH"
     if citations_empty:
         return "retriever"
-    if questions_empty and proposed == "FINISH":
+    if not grilled:
         return "intake"
-    if proposed in ("retriever", "intake", "FINISH"):
-        return proposed
-    return "retriever"
+    # Retriever and interrogator already ran this turn. Re-running them
+    # re-searches the same query and re-grills the PM on the same transcript,
+    # which is how the graph used to loop intake until it ran out of questions.
+    return "FINISH"
 
 
 def _user_query(messages: list) -> str:
@@ -81,6 +90,7 @@ def _snapshot(state: RefineryState) -> str:
     questions_text = (
         "(empty)" if not questions else "\n".join(f"- {q}" for q in questions)
     )
+    grilled = bool(state.get("grilled"))
     last_agent = state.get("last_agent") or "(nobody)"
     step_count = int(state.get("step_count") or 0)
     last_error = (state.get("last_error") or "").strip() or "(none)"
@@ -92,7 +102,8 @@ def _snapshot(state: RefineryState) -> str:
         f"last_agent: {last_agent}\n"
         f"step_count: {step_count}/{MAX_STEPS}\n"
         f"last_error: {last_error}\n"
-        f"close_requested: {close_requested}\n\n"
+        f"close_requested: {close_requested}\n"
+        f"interrogator already ran this turn: {grilled}\n\n"
         f"citations:\n{citations_text}\n\n"
         f"questions:\n{questions_text}"
     )
@@ -102,7 +113,7 @@ async def supervisor_turn(state: RefineryState, llm: BaseChatModel) -> dict:
     step_count = int(state.get("step_count") or 0) + 1
     last_error = (state.get("last_error") or "").strip()
     citations = state.get("citations") or []
-    questions = state.get("questions") or []
+    grilled = bool(state.get("grilled"))
     close_requested = bool(state.get("close_requested"))
 
     if last_error:
@@ -120,7 +131,7 @@ async def supervisor_turn(state: RefineryState, llm: BaseChatModel) -> dict:
         )
         next_agent = apply_rubric(
             citations_empty=not citations,
-            questions_empty=not questions,
+            grilled=grilled,
             step_count=step_count,
             proposed=decision.next_agent,
             close_requested=close_requested,

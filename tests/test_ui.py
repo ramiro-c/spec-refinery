@@ -4,7 +4,8 @@ from ui import _assistant_reply
 def test_assistant_reply_lists_questions_after_collision():
     spec = {
         "preguntas": [
-            "¿El comprar ahora saltea el carrito?",
+            "El pedido se pisa con «El precio se cierra en el carrito» "
+            "(adr-cart-price.md). ¿El comprar ahora saltea el carrito?",
             "¿Qué productos entran?",
             "¿Qué es más rápido?",
         ],
@@ -18,9 +19,27 @@ def test_assistant_reply_lists_questions_after_collision():
     }
     text = _assistant_reply(spec)
     assert "Hay un choque con El precio se cierra en el carrito." in text
-    assert "1. ¿El comprar ahora saltea el carrito?" in text
+    assert "adr-cart-price.md" in text
     assert "2. ¿Qué productos entran?" in text
     assert "3. ¿Qué es más rápido?" in text
+
+
+def test_assistant_reply_does_not_announce_a_collision_nobody_asks_about():
+    """Later rounds keep the citation but ask about other gaps."""
+    spec = {
+        "preguntas": ["¿Quién pide esto?", "¿Qué queda fuera de alcance?"],
+        "choques": [
+            {
+                "document_id": "spec-cyber-banner.md",
+                "title": "Banner Cyber Monday del año pasado",
+            }
+        ],
+        "estado": {"se_puede_cerrar": False, "vaguedad": 3, "razon": "faltan slots"},
+    }
+    text = _assistant_reply(spec)
+    assert "Hay un choque" not in text
+    assert "Necesito aclarar el pedido." in text
+    assert "Me quedan 2 preguntas." in text
 
 
 def test_assistant_reply_without_questions_when_closable():

@@ -1,0 +1,128 @@
+"""Interrogator node with a fake LLM: no question catalog, no keyword scoring."""
+
+from __future__ import annotations
+
+from langchain_core.messages import AIMessage, HumanMessage
+from langchain_core.runnables import Runnable, RunnableLambda
+
+from agents.intake import interrogate
+from demo import CYBER_TICKET
+from schemas import Citation
+from state import initial_fields
+
+
+def _fake_llm(salida: dict, *, capturar: dict | None = None):
+    class _ChatModelFake(Runnable):
+        def invoke(self, mensajes, config=None, **kwargs):
+            return salida
+
+        def with_structured_output(self, schema):
+            def _structured(mensajes, config=None, **kwargs):
+                if capturar is not None:
+                    capturar["mensajes"] = mensajes
+                return schema.model_validate(salida)
+
+            return RunnableLambda(_structured)
+
+    return _ChatModelFake()
+
+
+async def test_interrogator_asks_as_many_questions_as_it_wants():
+    """No cap: the number of questions is the LLM's call, not the system's."""
+    preguntas = [f"¿Pregunta {i}?" for i in range(1, 8)]
+    llm = _fake_llm(
+        {
+            "preguntas": preguntas,
+            "se_puede_cerrar": False,
+            "vaguedad": 8,
+            "razon": "falta casi todo",
+        }
+    )
+    out = await interrogate({**initial_fields(CYBER_TICKET)}, llm)
+
+    assert out["questions"] == preguntas
+    assert out["assessment"].vaguedad == 8
+    assert out["grilled"] is True
+
+
+async def test_interrogator_questions_land_in_the_transcript():
+    """The next round reads what it already asked from the conversation."""
+    llm = _fake_llm(
+        {
+            "preguntas": ["¿Qué productos entran?"],
+            "se_puede_cerrar": False,
+            "vaguedad": 5,
+            "razon": "falta alcance",
+        }
+    )
+    out = await interrogate({**initial_fields(CYBER_TICKET)}, llm)
+
+    posted = out["messages"][0]
+    assert posted.name == "intake"
+    assert "¿Qué productos entran?" in posted.content
+
+
+async def test_interrogator_sees_the_rules_and_the_whole_conversation():
+    capturar: dict = {}
+    llm = _fake_llm(
+        {
+            "preguntas": [],
+            "se_puede_cerrar": True,
+            "vaguedad": 0,
+            "razon": "cerrada",
+        },
+        capturar=capturar,
+    )
+    state = {
+        **initial_fields(CYBER_TICKET),
+        "citations": [
+            Citation(
+                document_id="adr-cart-price.md",
+                title="El precio se cierra en el carrito",
+                excerpt="No se saltea.",
+            )
+        ],
+        "messages": [
+            HumanMessage(content=CYBER_TICKET),
+            AIMessage(content="¿Qué productos entran?", name="intake"),
+            HumanMessage(content="solo SKU 1P"),
+            AIMessage(content="Spec updated", name="writer"),
+        ],
+    }
+    await interrogate(state, llm)
+
+    prompt = capturar["mensajes"][-1].content
+    assert "adr-cart-price.md" in prompt
+    assert "PM: solo SKU 1P" in prompt
+    assert "Refinery: ¿Qué productos entran?" in prompt
+    # Writer bookkeeping is graph noise, not dialogue.
+    assert "Spec updated" not in prompt
+
+
+async def test_interrogator_can_close_when_the_pm_asks():
+    llm = _fake_llm(
+        {
+            "preguntas": [],
+            "se_puede_cerrar": False,
+            "vaguedad": 4,
+            "razon": "el PM pidió cerrar igual",
+            "human_wants_close": True,
+        }
+    )
+    out = await interrogate({**initial_fields(CYBER_TICKET)}, llm)
+
+    assert out["close_requested"] is True
+
+
+async def test_interrogator_does_not_touch_close_when_the_pm_did_not_ask():
+    llm = _fake_llm(
+        {
+            "preguntas": ["¿Alcance?"],
+            "se_puede_cerrar": False,
+            "vaguedad": 4,
+            "razon": "sigue abierto",
+        }
+    )
+    out = await interrogate({**initial_fields(CYBER_TICKET)}, llm)
+
+    assert "close_requested" not in out

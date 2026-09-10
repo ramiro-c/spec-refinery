@@ -7,7 +7,7 @@ from langchain_core.messages import HumanMessage
 from agents.fakes import fake_intake, fake_retriever, fake_supervisor, fake_writer
 from checkpoint import close_checkpointer, create_checkpointer
 from graph import build_graph, invoke_config, run_turn
-from scoring import CYBER_TICKET
+from demo import CYBER_TICKET
 
 
 async def test_same_thread_id_persists_checkpoint_state(tmp_path):
@@ -43,7 +43,10 @@ async def test_same_thread_id_persists_checkpoint_state(tmp_path):
         [HumanMessage(content="segundo turno")],
         thread_id="t1",
     )
-    assert len(final2["messages"]) == 2
+    # Both human turns plus the questions the refinery asked on each of them.
+    human = [m for m in final2["messages"] if m.type == "human"]
+    assert [m.content for m in human] == ["primer turno", "segundo turno"]
+    assert len(final2["messages"]) == 4
     assert final2["citations"][0].document_id == "adr-cart-price.md"
     assert final2["ticket"] == CYBER_TICKET
 

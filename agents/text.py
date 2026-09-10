@@ -28,3 +28,21 @@ def human_texts(messages: list) -> list[str]:
         for message in messages or []
         if getattr(message, "type", None) == "human"
     ]
+
+
+def transcript_lines(messages: list) -> list[str]:
+    """The real conversation: what the PM said and what the refinery asked.
+
+    Supervisor rationales and writer bookkeeping are graph noise, not dialogue.
+    """
+    lines: list[str] = []
+    for message in messages or []:
+        kind = getattr(message, "type", None)
+        text = message_text(message).strip()
+        if not text:
+            continue
+        if kind == "human":
+            lines.append(f"PM: {text}")
+        elif getattr(message, "name", None) == "intake":
+            lines.append(f"Refinery: {text}")
+    return lines

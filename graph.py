@@ -1,4 +1,4 @@
-"""Hierarchical graph: supervisor routes retriever -> intake -> writer.
+"""Hierarchical graph: supervisor routes retriever -> interrogator -> writer.
 
 ``route_from_supervisor`` returns node names. ``FINISH`` maps to ``writer``,
 which updates the spec and ends at ``END``. ``run_turn`` streams asynchronously
@@ -40,22 +40,20 @@ def build_graph(
     checkpointer: BaseCheckpointSaver | None = None,
 ) -> CompiledStateGraph:
     """Assemble the graph. Without explicit nodes, uses the LLM factory (supervisor + writer)."""
-    if supervisor is None or writer is None:
+    if supervisor is None or writer is None or intake is None:
+        from agents.intake import make_intake_node
         from agents.supervisor import make_supervisor_node
         from agents.writer import make_writer_node
         from clients.factory import build_role_models
 
         models = build_role_models()
         supervisor = supervisor or make_supervisor_node(models["supervisor"])
+        intake = intake or make_intake_node(models["interrogator"])
         writer = writer or make_writer_node(models["writer"])
     if retriever is None:
         from agents.retriever_node import make_retriever_node
 
         retriever = make_retriever_node()
-    if intake is None:
-        from agents.intake import make_intake_node
-
-        intake = make_intake_node()
     builder = StateGraph(RefineryState)
     builder.set_node_defaults(
         retry_policy=NODE_RETRY,
@@ -114,6 +112,9 @@ async def run_turn(
             "ticket": ticket,
             "citations": [],
             "questions": [],
+            # Per-turn flag; ``assessment`` deliberately survives the turn so an
+            # explicit close still reports the last honest verdict.
+            "grilled": False,
             "step_count": 0,
             "last_error": "",
         }

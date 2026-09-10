@@ -66,13 +66,16 @@ def test_openrouter_modelos_por_env(monkeypatch):
     fake, llamadas = _fake_chat()
     _inyectar_openrouter(monkeypatch, fake)
     monkeypatch.setattr(factory, "SUPERVISOR_MODEL", "test/supervisor:free")
+    monkeypatch.setattr(factory, "INTERROGATOR_MODEL", "test/interrogator:free")
     monkeypatch.setattr(factory, "WRITER_MODEL", "test/writer:free")
 
     build_chat_model(provider="openrouter", role="supervisor")
+    build_chat_model(provider="openrouter", role="interrogator")
     build_chat_model(provider="openrouter", role="writer")
 
     assert llamadas[0]["model"] == "test/supervisor:free"
-    assert llamadas[1]["model"] == "test/writer:free"
+    assert llamadas[1]["model"] == "test/interrogator:free"
+    assert llamadas[2]["model"] == "test/writer:free"
 
 
 def test_gemini_comparte_un_modelo(monkeypatch):
@@ -115,11 +118,11 @@ def test_gemini_envuelve_chat_para_apagar_afc(monkeypatch):
     assert llamadas[0]["model"] == GEMINI_DEFAULT_MODEL
 
 
-def test_build_role_models_openrouter_dos_instancias(monkeypatch):
+def test_build_role_models_openrouter_una_instancia_por_rol(monkeypatch):
     fake, llamadas = _fake_chat()
     _inyectar_openrouter(monkeypatch, fake)
 
     models = build_role_models(provider="openrouter")
 
-    assert set(models) == {"supervisor", "writer"}
-    assert [c["model"] for c in llamadas] == [OPENROUTER_DEFAULT_MODEL, OPENROUTER_DEFAULT_MODEL]
+    assert set(models) == {"supervisor", "interrogator", "writer"}
+    assert [c["model"] for c in llamadas] == [OPENROUTER_DEFAULT_MODEL] * 3

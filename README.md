@@ -1,17 +1,16 @@
 # Spec Refinery
 
-Refinador de requerimientos para PMs: pegás un ticket vago, el sistema busca reglas de la empresa, hace hasta 3 preguntas y reescribe una spec en cada turno. El humano cierra cuando quiere.
-
-Diseño completo: [docs/superpowers/specs/2026-09-05-spec-refinery-design.md](docs/superpowers/specs/2026-09-05-spec-refinery-design.md)
+Refinador de requerimientos para PMs: pegás un ticket vago y el sistema te **interroga** ronda a ronda hasta que la spec sea implementable. Busca las reglas de la empresa con RAG, discute cuando el pedido las contradice, y repregunta si le contestás cualquier cosa. No hay catálogo de preguntas: el LLM decide qué hace falta para este pedido y cuántas preguntas hacen falta. El humano cierra cuando quiere: con el botón o pidiéndoselo al chat.
 
 Diagrama interactivo del grafo: [docs/grafo.html](docs/grafo.html) (generado con [Archify](.agents/skills/archify)).
 
 ## Quick path (demo Cyber Monday)
 
 1. Pegá el ticket: *“Para el Cyber Monday queremos un checkout más rápido, tipo Amazon: que el comprar ahora no pase por el carrito.”*
-2. El sistema encuentra la regla del carrito y devuelve la spec con 3 preguntas.
-3. Respondés en el chat; la spec de la derecha se reescribe.
-4. Apretás **Cerrar spec**. Sale el documento final (con “no cerraría” si aún faltan huecos).
+2. El interrogador cruza el pedido con el corpus y te planta las contradicciones: sin carrito, ¿cuándo reserva stock `inventory-service` (`adr-stock-reserve.md`)? ¿Cómo confirma envío `shipping-service` (`adr-shipping-step.md`)?
+3. Respondés en el chat. Si contestás una evasiva, te la cita de vuelta y repregunta; la vaguedad no baja.
+4. Cuando respondés en serio, la vaguedad baja y las preguntas cambian. Si te contradecís con tu propio ticket, te lo marca.
+5. Cerrás vos: apretás **Cerrar spec** o se lo pedís al chat. Si la spec todavía no está lista, el documento final lo dice igual.
 
 ## Levantar
 
@@ -44,6 +43,7 @@ Variables útiles:
 | `SPEC_REFINERY_API` | `http://127.0.0.1:8000` | URL de la API para Streamlit |
 | `LLM_PROVIDER` | `gemini` | `gemini` (Vertex/ADC) u `openrouter` |
 | `SUPERVISOR_MODEL` | default del proveedor | Modelo del supervisor (`openrouter` o override por rol) |
+| `INTERROGATOR_MODEL` | default del proveedor | Modelo del interrogador (`openrouter` o override por rol) |
 | `WRITER_MODEL` | default del proveedor | Modelo del writer (`openrouter` o override por rol) |
 | `VECTOR_BACKEND` | `chroma` | `chroma` local (único backend soportado) |
 
@@ -52,17 +52,19 @@ Variables útiles:
 ```
 mensaje del PM
     → supervisor
-         ├─ no hay docs de este turno     → retriever → supervisor
-         ├─ hay docs, no hay preguntas    → intake    → supervisor
-         └─ hay ambos, o dijo cerrar      → writer    → fin del turno
+         ├─ no hay docs de este turno        → retriever → supervisor
+         ├─ hay docs, no interrogó todavía   → intake    → supervisor
+         └─ ya interrogó, o el PM dijo cerrar → writer   → fin del turno
 ```
+
+Cada nodo corre **como mucho una vez por turno**: volver a interrogar sobre el mismo transcript lo único que hace es loopear el grafo.
 
 | Nodo | Rol |
 |------|-----|
 | **Supervisor** | Rutea según rúbrica dura; no busca ni escribe. |
 | **Retriever** | RAG híbrido (BM25 + embeddings + RRF) sobre Chroma. |
-| **Intake** | Cuentas de vaguedad, huecos y fanout; ranking top 3 preguntas. |
-| **Writer** | Reescribe las 7 cajas de `SpecDocument` en cada turno. |
+| **Intake** (interrogador) | LLM: lee el ticket, todo el transcript y las reglas recuperadas, y decide qué preguntar, cuántas preguntas y si la spec ya se puede cerrar. Sin catálogo de preguntas ni scoring por palabras clave. |
+| **Writer** | Reescribe `que_entendimos`, `criterios` y `servicios`. No puntúa: el veredicto (`estado`) es del interrogador. |
 
 La API (`app.py`) es el sistema; Streamlit (`ui.py`) es la piel.
 
@@ -73,6 +75,10 @@ La API (`app.py`) es el sistema; Streamlit (`ui.py`) es la piel.
 | Empezar | `POST /threads` → `{ticket}` → `thread_id` + spec |
 | Seguir | `POST /threads/{id}/messages` → `{content}` → spec |
 | Cerrar | `POST /threads/{id}/close` → spec final |
+
+`/messages` también cierra si el humano lo pide en texto (*“cerrá la spec”*, *“dala por cerrada”*).
+Lo decide el interrogador leyendo la intención, no un regex: describir el dominio
+(*“el precio se sigue cerrando en el carrito”*) no cierra nada.
 
 ## Trazas con Phoenix (5 corridas Cyber Monday)
 
