@@ -81,6 +81,48 @@ async def test_the_round_budget_reaches_the_prompt():
     assert f"up to {MAX_QUESTIONS_PER_ROUND} questions" in prompt
 
 
+async def test_the_prompt_requires_glossary_first_disambiguation():
+    """The interrogator interprets retrieved terms before calling a rule contradicted."""
+    capturar: dict = {}
+    llm = _fake_llm(
+        {
+            "preguntas": [],
+            "se_puede_cerrar": False,
+            "vaguedad": 0,
+            "razon": "x",
+        },
+        capturar=capturar,
+    )
+    await interrogate({**initial_fields(CYBER_TICKET)}, llm)
+
+    prompt = capturar["mensajes"][0].content
+    assert "interpret the request's terms" in prompt
+    assert "no real conflict once interpreted per the glossary" in prompt
+    assert "state the benign reading" in prompt
+    assert "the clash is REAL" in prompt
+
+
+async def test_the_prompt_preserves_the_three_resolutions_and_document_naming():
+    """The three PM resolutions, document naming and decision recording survive."""
+    capturar: dict = {}
+    llm = _fake_llm(
+        {
+            "preguntas": [],
+            "se_puede_cerrar": False,
+            "vaguedad": 0,
+            "razon": "x",
+        },
+        capturar=capturar,
+    )
+    await interrogate({**initial_fields(CYBER_TICKET)}, llm)
+
+    prompt = capturar["mensajes"][0].content
+    assert "the PM adapts the request to the rule" in prompt
+    assert "the PM takes a scoped exception" in prompt
+    assert "name the document" in prompt
+    assert "decisiones" in prompt
+
+
 async def test_interrogator_questions_land_in_the_transcript():
     """The next round reads what it already asked from the conversation."""
     llm = _fake_llm(
