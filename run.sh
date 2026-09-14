@@ -19,6 +19,12 @@ require_free_port() {
 require_free_port 8000 "API"
 require_free_port 8501 "UI"
 
+if command -v docker >/dev/null 2>&1 && docker compose up -d phoenix >/dev/null 2>&1; then
+  echo "[run] Phoenix iniciado — UI en http://localhost:6010"
+else
+  echo "[run] Phoenix omitido (docker no disponible o falló) — UI en http://localhost:6010"
+fi
+
 if [[ ! -d .chroma ]]; then
   echo "[run] .chroma ausente — ejecutando ingest..."
   "${PYTHON}" ingest.py
