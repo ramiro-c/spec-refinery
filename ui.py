@@ -212,7 +212,7 @@ def _render_citation(citation: dict) -> None:
 
 
 def _render_spec(spec: dict) -> None:
-    """Renderiza las 8 cajas del SpecDocument."""
+    """Renderiza las 9 secciones del SpecDocument."""
     st.subheader("Pedido")
     st.write(spec.get("request") or "—")
 
