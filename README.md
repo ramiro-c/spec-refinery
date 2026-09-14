@@ -19,6 +19,8 @@ En la UI, el panel derecho separa **Choques reales** (`clashes`) de **Contexto r
 
 ## Levantar
 
+Local (venv):
+
 ```bash
 python -m venv .venv
 source .venv/bin/activate
@@ -31,26 +33,49 @@ pip install -r requirements.txt
 - Phoenix (trazas): http://127.0.0.1:6010
 - `run.sh` corre `ingest.py` si falta `.chroma`, arranca Phoenix best-effort con Docker (si no hay Docker, avisa y sigue), levanta la API en background y deja Streamlit en primer plano. El tracing está **encendido por defecto** (sin variables de entorno) siempre que estén instalados los paquetes de Phoenix — ver [Trazas con Phoenix](#trazas-con-phoenix).
 
-QA sin credenciales LLM (grafo dummy + Phoenix):
+Docker (los dos modos del grafo):
+
+`docker compose` levanta Phoenix + api + ui, y el servicio `api` elige el grafo con `SPEC_REFINERY_GRAPH`:
 
 ```bash
+# Modo live (default): grafo real, LLM + RAG. Requiere .env con credenciales.
 docker compose up --build
+
+# Modo fake: nodos dummy, sin LLM ni embeddings ni credenciales.
+SPEC_REFINERY_GRAPH=fake docker compose up --build
 ```
 
-- API: http://127.0.0.1:8000/health
+- API: http://127.0.0.1:8000/health — `{"status": "ok", "graph": "live"}` o `"fake"` según el modo.
 - UI: http://127.0.0.1:8501
 - Phoenix: http://127.0.0.1:6010
-- `docker compose` levanta Phoenix + api + ui, pero el servicio `api` corre con `SPEC_REFINERY_GRAPH=fake`: preguntas predefinidas con nodos dummy, **sin LLM ni embeddings**, para ejercitar el contrato de la API sin credenciales. Para Vertex/OpenRouter: `SPEC_REFINERY_GRAPH=live` y un `.env` con las keys.
+
+Contrato de `SPEC_REFINERY_GRAPH`: valores `live` | `fake`, default `live`. `live` es el default porque `docker compose up` tiene que mostrar el sistema real en un solo comando; `fake` queda para corridas offline o sin credenciales. Se cambia por variable de entorno (como arriba) o seteándola en `.env`.
+
+### Credenciales (modo live)
+
+`api` carga `.env` con `env_file` (archivo opcional) y lo usa como configuración de proveedor. Para `live` el `.env` necesita:
+
+- `LLM_PROVIDER=gemini` con Vertex/ADC: `GOOGLE_GENAI_USE_VERTEXAI=true`, `GOOGLE_CLOUD_PROJECT`, `GOOGLE_CLOUD_LOCATION` y `GOOGLE_APPLICATION_CREDENTIALS` apuntando al JSON de credenciales.
+- `GOOGLE_APPLICATION_CREDENTIALS` es la ruta al archivo de credenciales **relativa a la raíz del repo** (p. ej. `.secrets/adc-personal.json`). Compose la usa como origen de un bind mount read-only en `/secrets/adc.json`, y el contenedor lee las credenciales de esa ruta. Sin la variable, el mount cae a `/dev/null` y el modo `fake` arranca igual.
+- `LLM_PROVIDER=openrouter`: `OPENROUTER_API_KEY` en lugar de ADC.
+
+Sin credenciales no hay que preparar nada: `SPEC_REFINERY_GRAPH=fake docker compose up --build` corre con nodos dummy.
+
+### Retrieval (modo live)
+
+La imagen indexa `corpus/**` en Chroma durante el build (`python ingest.py` → `/app/.chroma`), así que `live` recupera con el índice horneado y no necesita un volume de índice. `fake` no toca Chroma.
 
 Variables útiles:
 
 | Variable | Default | Uso |
 |----------|---------|-----|
 | `SPEC_REFINERY_API` | `http://127.0.0.1:8000` | URL de la API para Streamlit |
+| `SPEC_REFINERY_GRAPH` | `live` | Modo del grafo: `live` (LLM + RAG) o `fake` (nodos dummy) |
 | `LLM_PROVIDER` | `gemini` | `gemini` (Vertex/ADC) u `openrouter` |
 | `SUPERVISOR_MODEL` | default del proveedor | Modelo del supervisor (`openrouter` o override por rol) |
 | `INTERROGATOR_MODEL` | default del proveedor | Modelo del interrogador (`openrouter` o override por rol) |
 | `WRITER_MODEL` | default del proveedor | Modelo del writer (`openrouter` o override por rol) |
+| `EMBEDDING_MODEL` | `sentence-transformers/all-MiniLM-L6-v2` | Modelo de embeddings local |
 | `VECTOR_BACKEND` | `chroma` | `chroma` local (único backend soportado) |
 | `PHOENIX_COLLECTOR_ENDPOINT` | `http://localhost:6010/v1/traces` | Endpoint OTLP de Phoenix. En compose se override a `http://phoenix:6006/v1/traces`. |
 

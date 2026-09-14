@@ -14,12 +14,21 @@ services:
     build: .
     ports:
       - "8000:8000"
+    # Live mode reads the provider credentials from .env; fake mode runs
+    # without it, so the file is optional.
+    env_file:
+      - path: .env
+        required: false
     environment:
-      SPEC_REFINERY_GRAPH: fake
+      SPEC_REFINERY_GRAPH: "${SPEC_REFINERY_GRAPH:-live}"
       PHOENIX_COLLECTOR_ENDPOINT: http://phoenix:6006/v1/traces
       CHECKPOINT_PATH: /data/checkpoints.sqlite
+      GOOGLE_APPLICATION_CREDENTIALS: /secrets/adc.json
     volumes:
       - api-data:/data
+      # Vertex ADC: GOOGLE_APPLICATION_CREDENTIALS from .env is the mount
+      # source, read-only; without it the mount falls back to /dev/null.
+      - "${GOOGLE_APPLICATION_CREDENTIALS:-/dev/null}:/secrets/adc.json:ro"
     depends_on:
       phoenix:
         condition: service_started

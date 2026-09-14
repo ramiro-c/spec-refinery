@@ -7,6 +7,10 @@ RUN pip install --no-cache-dir -r requirements-compose.txt
 
 COPY . .
 
+# Index the corpus into /app/.chroma at build time. Live mode reads this index
+# with no host bind mount; fake mode never touches it.
+RUN python ingest.py
+
 EXPOSE 8000 8501
 
 CMD ["uvicorn", "app:app", "--host", "0.0.0.0", "--port", "8000"]
