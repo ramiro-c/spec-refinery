@@ -114,13 +114,26 @@ def sc1_health_and_thread_start(client: httpx.Client, ctx: dict) -> str:
 
 
 def _assert_citations(spec: dict, where: str) -> list[str]:
+    """A corpus-grounded turn must show evidence: real clashes OR context.
+
+    Live S3 ("¿Cuándo se reserva el stock?") is context, not a clash; requiring
+    only `choques` would force undeclared documents back into the clash bucket.
+    """
     choques = spec.get("choques")
-    _require(isinstance(choques, list), f"{where}: spec.choques missing or not a list: {spec}")
-    _require(len(choques) > 0, f"{where}: no citations returned for a corpus-grounded question")
-    doc_ids = [str(c.get("document_id", "")) for c in choques]
+    contexto = spec.get("contexto")
+    _require(
+        isinstance(choques, list) and isinstance(contexto, list),
+        f"{where}: spec.choques/contexto missing or not a list: {spec}",
+    )
+    retrieved = choques + contexto
+    _require(
+        len(retrieved) > 0,
+        f"{where}: no citations returned for a corpus-grounded question",
+    )
+    doc_ids = [str(c.get("document_id", "")) for c in retrieved]
     _require(
         all(d for d in doc_ids),
-        f"{where}: citation without document_id: {choques}",
+        f"{where}: citation without document_id: {retrieved}",
     )
     return doc_ids
 

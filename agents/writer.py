@@ -8,7 +8,7 @@ from langchain_core.messages import AIMessage, HumanMessage, SystemMessage
 from agents.text import transcript_lines
 from catalog import SERVICE_IDS
 from config import MAX_ROUNDS
-from schemas import Decision, SpecDocument, SpecStatus
+from schemas import Citation, Decision, SpecDocument, SpecStatus
 from state import RefineryState, empty_spec
 
 WRITER_PROMPT = """You are the spec writer of the refinery.
@@ -40,6 +40,43 @@ def _merge_decisions(state: RefineryState) -> list[Decision]:
         else:
             merged.append(fresh)
     return merged
+
+
+def _merge_choques(prior: list[Citation], fresh: list[Citation]) -> list[Citation]:
+    """Real clashes accumulate over the thread; a redeclared id wins in place."""
+    merged: list[Citation] = list(prior)
+    for citation in fresh:
+        for index, existing in enumerate(merged):
+            if existing.document_id == citation.document_id:
+                merged[index] = citation
+                break
+        else:
+            merged.append(citation)
+    return merged
+
+
+def resolve_choques_y_contexto(
+    state: RefineryState,
+) -> tuple[list[Citation], list[Citation]]:
+    """Derive real clashes and retrieved context from declared classifications.
+
+    We iterate THIS turn's citations, not the declarations, so an unknown or
+    hallucinated ``document_id`` can never fabricate a clash. A citation with no
+    declaration is context, never a silent clash.
+    """
+    citations = list(state.get("citations") or [])
+    declared = {
+        assessment.document_id: assessment.tipo
+        for assessment in (state.get("clasificaciones") or [])
+    }
+    prior = state.get("spec")
+    real_now = [c for c in citations if declared.get(c.document_id) == "choque"]
+    choques = _merge_choques(list(prior.choques) if prior is not None else [], real_now)
+    if citations:
+        contexto = citations
+    else:
+        contexto = list(prior.contexto) if prior is not None else []
+    return choques, contexto
 
 
 def _is_frozen(state: RefineryState) -> bool:
@@ -115,7 +152,7 @@ async def writer_turn(state: RefineryState, llm: BaseChatModel) -> dict:
     )
     spec = draft
     spec.pedido = ticket
-    spec.choques = list(citations)
+    spec.choques, spec.contexto = resolve_choques_y_contexto(state)
     spec.preguntas = [] if _is_frozen(state) else list(questions)
     spec.decisiones = _merge_decisions(state)
     spec.servicios = [s for s in spec.servicios if s in SERVICE_IDS]

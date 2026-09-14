@@ -8,7 +8,7 @@ from langchain_core.runnables import Runnable, RunnableLambda
 from agents.writer import writer_turn
 from config import MAX_ROUNDS
 from demo import CYBER_TICKET
-from schemas import Decision, SpecStatus
+from schemas import Citation, Decision, DocumentAssessment, SpecStatus
 from state import empty_spec, initial_fields
 
 
@@ -28,6 +28,20 @@ def _modelo_llm_fake(salida: dict, *, capturar=None):
             return RunnableLambda(_structured_invoke)
 
     return _ChatModelFake()
+
+
+def _cita(document_id: str) -> Citation:
+    return Citation(document_id=document_id, title=document_id, excerpt="regla")
+
+
+def _borrador() -> dict:
+    return {
+        "pedido": "x",
+        "que_entendimos": "y",
+        "criterios": [],
+        "preguntas": [],
+        "estado": {"se_puede_cerrar": False, "vaguedad": 3, "razon": "llm"},
+    }
 
 
 async def test_writer_llm_reescribe_spec_y_respeta_pedido():
@@ -318,3 +332,106 @@ async def test_writer_freezes_the_spec_when_the_rounds_run_out():
 
     assert out["spec"].preguntas == []
     assert f"se agotaron las {MAX_ROUNDS} rondas" in out["spec"].estado.razon
+
+
+async def test_writer_keeps_only_declared_clashes():
+    """A document typed `contexto` never lands in `choques`."""
+    modelo = _modelo_llm_fake(_borrador())
+    state = {
+        **initial_fields(CYBER_TICKET),
+        "citations": [_cita("adr-cart-price.md"), _cita("adr-stock-reserve.md")],
+        "clasificaciones": [
+            DocumentAssessment(document_id="adr-cart-price.md", tipo="choque"),
+            DocumentAssessment(document_id="adr-stock-reserve.md", tipo="contexto"),
+        ],
+    }
+    out = await writer_turn(state, modelo)
+
+    spec = out["spec"]
+    assert [c.document_id for c in spec.choques] == ["adr-cart-price.md"]
+    assert [c.document_id for c in spec.contexto] == [
+        "adr-cart-price.md",
+        "adr-stock-reserve.md",
+    ]
+
+
+async def test_writer_accumulates_real_clashes_and_dedups():
+    """Earlier clashes survive; a redeclared document is stored once."""
+    modelo = _modelo_llm_fake(_borrador())
+    prior = empty_spec(CYBER_TICKET)
+    prior.choques = [_cita("adr-cart-price.md"), _cita("adr-shipping-step.md")]
+    prior.contexto = [_cita("adr-cart-price.md"), _cita("adr-shipping-step.md")]
+    state = {
+        **initial_fields(CYBER_TICKET),
+        "spec": prior,
+        "citations": [_cita("adr-cart-price.md"), _cita("adr-stock-reserve.md")],
+        "clasificaciones": [
+            DocumentAssessment(document_id="adr-cart-price.md", tipo="choque"),
+            DocumentAssessment(document_id="adr-stock-reserve.md", tipo="choque"),
+        ],
+    }
+    out = await writer_turn(state, modelo)
+
+    ids = [c.document_id for c in out["spec"].choques]
+    assert ids == [
+        "adr-cart-price.md",
+        "adr-shipping-step.md",
+        "adr-stock-reserve.md",
+    ]
+    assert len(ids) == len(set(ids))
+
+
+async def test_writer_drops_declarations_outside_citations():
+    """A hallucinated document_id can never fabricate a clash."""
+    modelo = _modelo_llm_fake(_borrador())
+    state = {
+        **initial_fields(CYBER_TICKET),
+        "citations": [_cita("adr-cart-price.md")],
+        "clasificaciones": [
+            DocumentAssessment(document_id="adr-cart-price.md", tipo="contexto"),
+            DocumentAssessment(document_id="inventada.md", tipo="choque"),
+        ],
+    }
+    out = await writer_turn(state, modelo)
+
+    assert out["spec"].choques == []
+    assert [c.document_id for c in out["spec"].contexto] == ["adr-cart-price.md"]
+
+
+async def test_writer_undeclared_citation_lands_in_contexto():
+    """An undeclared citation is context, never a false clash (D1)."""
+    modelo = _modelo_llm_fake(_borrador())
+    state = {
+        **initial_fields(CYBER_TICKET),
+        "citations": [_cita("adr-cart-price.md"), _cita("adr-stock-reserve.md")],
+        "clasificaciones": [
+            DocumentAssessment(document_id="adr-cart-price.md", tipo="choque"),
+        ],
+    }
+    out = await writer_turn(state, modelo)
+
+    assert [c.document_id for c in out["spec"].choques] == ["adr-cart-price.md"]
+    assert [c.document_id for c in out["spec"].contexto] == [
+        "adr-cart-price.md",
+        "adr-stock-reserve.md",
+    ]
+
+
+async def test_writer_carries_contexto_forward_when_nothing_retrieved():
+    """A close turn retrieves nothing: prior contexto and clashes survive."""
+    modelo = _modelo_llm_fake(_borrador())
+    prior = empty_spec(CYBER_TICKET)
+    prior.choques = [_cita("adr-cart-price.md")]
+    prior.contexto = [_cita("adr-stock-reserve.md")]
+    state = {
+        **initial_fields(CYBER_TICKET, close_requested=True),
+        "spec": prior,
+        "citations": [],
+        "clasificaciones": [],
+    }
+    out = await writer_turn(state, modelo)
+
+    assert [c.document_id for c in out["spec"].choques] == ["adr-cart-price.md"]
+    assert [c.document_id for c in out["spec"].contexto] == [
+        "adr-stock-reserve.md"
+    ]

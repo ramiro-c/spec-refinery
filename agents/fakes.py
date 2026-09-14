@@ -8,7 +8,7 @@ from __future__ import annotations
 
 from langchain_core.messages import AIMessage
 
-from schemas import Citation, SpecStatus
+from schemas import Citation, DocumentAssessment, SpecStatus
 from state import RefineryState
 
 FAKE_QUESTIONS = [
@@ -55,13 +55,16 @@ def fake_intake(state: RefineryState) -> dict:
             razon="grafo fake (QA, sin LLM)",
         ),
         "grilled": True,
+        "clasificaciones": [
+            DocumentAssessment(document_id="adr-cart-price.md", tipo="choque")
+        ],
         "messages": [AIMessage(content="\n".join(FAKE_QUESTIONS), name="intake")],
         "last_agent": "intake",
     }
 
 
 def fake_writer(state: RefineryState) -> dict:
-    from agents.writer import _is_frozen
+    from agents.writer import _is_frozen, resolve_choques_y_contexto
 
     spec = state["spec"]
     ticket = state.get("ticket") or ""
@@ -73,7 +76,7 @@ def fake_writer(state: RefineryState) -> dict:
         else spec.que_entendimos
     )
     spec.preguntas = [] if close_requested else list(state.get("questions") or [])
-    spec.choques = list(state.get("citations") or [])
+    spec.choques, spec.contexto = resolve_choques_y_contexto(state)
     assessment = state.get("assessment")
     if assessment is not None:
         spec.estado = assessment.model_copy()
