@@ -156,6 +156,21 @@ def _init_session() -> None:
         st.session_state.max_questions = 3
 
 
+def _reset_thread_session() -> None:
+    """Cierra la identidad del thread para que el próximo turno arranque uno nuevo.
+
+    Reset only the thread-scoped keys from ``_init_session``; the configuration
+    keys (``max_rounds``, ``max_questions``) survive so the round budget holds.
+    """
+    st.session_state.thread_id = None
+    st.session_state.spec = None
+    st.session_state.messages = []
+    st.session_state.pending_prompt = None
+    st.session_state.pending_close = False
+    st.session_state.api_error = None
+    st.session_state.round = 0
+
+
 def _post_start(ticket: str) -> dict:
     """Primer turno: POST /threads."""
     with httpx.Client(timeout=HTTP_TIMEOUT) as client:
@@ -333,6 +348,7 @@ def main() -> None:
         if not st.session_state.messages:
             _render_intro()
             if st.button("Usar el ticket de demo", type="secondary"):
+                _reset_thread_session()
                 _queue_prompt(CYBER_TICKET)
         else:
             _render_round_meter()

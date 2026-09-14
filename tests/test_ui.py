@@ -1,6 +1,7 @@
 import contextlib
 
 import ui
+from demo import CYBER_TICKET
 from ui import _assistant_reply, _spec_is_open
 
 
@@ -31,6 +32,7 @@ class _FakeStreamlit:
             messages=list(messages) if messages is not None else [],
         )
         self.buttons: list[str] = []
+        self.buttons_pressed: set[str] = set()
         self.captions: list[str] = []
         self.subheaders: list[str] = []
         self.events: list[tuple[str, str]] = []
@@ -81,7 +83,7 @@ class _FakeStreamlit:
     # Widgets --------------------------------------------------------------
     def button(self, label, **kwargs):
         self.buttons.append(str(label))
-        return False
+        return str(label) in self.buttons_pressed
 
     def chat_input(self, *args, **kwargs):
         return None
@@ -258,3 +260,34 @@ def test_render_spec_separates_clashes_from_context(monkeypatch):
     )
     assert clash_header < clash_doc < context_header
     assert context_header < context_doc
+
+
+def test_demo_button_always_starts_a_fresh_thread(monkeypatch):
+    """A leftover thread id must not survive the demo button.
+
+    With `thread_id` set and an empty chat, `_execute_prompt` would otherwise
+    POST to `/threads/{id}/messages` (continuation) instead of `/threads`.
+    """
+    fake = _FakeStreamlit(thread_id="t-existing", spec={"closed": True})
+    fake.buttons_pressed.add("Usar el ticket de demo")
+    monkeypatch.setattr(ui, "st", fake)
+
+    ui.main()
+
+    assert fake.session_state.thread_id is None
+    assert fake.session_state.pending_prompt == CYBER_TICKET
+
+
+def test_demo_button_reset_preserves_round_budget(monkeypatch):
+    """The thread reset must not clobber the configured round budget."""
+    fake = _FakeStreamlit(thread_id="t-existing", spec={"closed": True})
+    fake.session_state.max_rounds = 9
+    fake.session_state.max_questions = 7
+    fake.buttons_pressed.add("Usar el ticket de demo")
+    monkeypatch.setattr(ui, "st", fake)
+
+    ui.main()
+
+    assert fake.session_state.thread_id is None
+    assert fake.session_state.max_rounds == 9
+    assert fake.session_state.max_questions == 7
