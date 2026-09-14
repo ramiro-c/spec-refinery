@@ -4,6 +4,8 @@ Refinador de requerimientos para PMs: pegás un ticket vago y el sistema te **in
 
 Diagrama interactivo del grafo: [docs/grafo.html](docs/grafo.html) (generado con [Archify](.agents/skills/archify)).
 
+![Arquitectura de Spec Refinery: Streamlit y FastAPI como bordes, el grafo LangGraph (supervisor, retriever, intake, writer) en el medio, y Chroma, el checkpointer y Phoenix como dependencias](docs/spec-refinery-arquitectura-share-card.png)
+
 En la UI, el panel derecho separa **Choques reales** (`clashes`) de **Contexto recuperado** (`context`), y el botón **Usar el ticket de demo** siempre arranca un hilo nuevo.
 
 ## Quick path (demo Cyber Monday)
@@ -124,7 +126,7 @@ node .agents/skills/archify/bin/archify.mjs deliver architecture \
   docs/spec-refinery.architecture.json docs/grafo.html --quality showcase
 ```
 
-Diagramas: usar Archify del repo (`.agents/skills/archify`).
+Diagramas: usar Archify del repo (`.agents/skills/archify`). La imagen estática que se ve arriba es `docs/spec-refinery-arquitectura-share-card.png`, exportada del mismo artefacto.
 
 ## Tests
 
