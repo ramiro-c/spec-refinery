@@ -5,6 +5,7 @@
     "title": "Spec Refinery — Arquitectura",
     "output": "grafo.html",
     "quality_profile": "showcase",
+    "viewBox": [1100, 400],
     "views": [
       {
         "id": "request-path",
@@ -17,6 +18,18 @@
         "label": "RAG híbrido",
         "focus": ["supervisor", "retriever", "chroma", "intake"],
         "note": "Sin docs el supervisor manda al retriever; intake arma las preguntas."
+      },
+      {
+        "id": "clash-context-path",
+        "label": "Clashes, contexto y cierre",
+        "focus": ["intake", "writer", "checkpointer"],
+        "note": "Intake clasifica cada documento; writer separa clashes reales de contexto y persiste."
+      },
+      {
+        "id": "tracing-path",
+        "label": "Observabilidad",
+        "focus": ["api", "phoenix"],
+        "note": "La API instrumenta OpenTelemetry; las trazas van a Phoenix."
       }
     ]
   },
@@ -26,56 +39,72 @@
       "type": "frontend",
       "label": "Streamlit",
       "sublabel": "ui.py :8501",
-      "pos": [40, 200],
-      "size": [130, 60]
+      "pos": [40, 190],
+      "size": [130, 56]
     },
     {
       "id": "api",
       "type": "backend",
       "label": "FastAPI",
       "sublabel": "app.py :8000",
-      "pos": [230, 200],
-      "size": [130, 60]
+      "pos": [220, 190],
+      "size": [140, 56]
     },
     {
       "id": "supervisor",
       "type": "backend",
       "label": "Supervisor",
       "sublabel": "rúbrica + ruteo",
-      "pos": [420, 200],
-      "size": [130, 60]
+      "pos": [420, 190],
+      "size": [140, 56]
     },
     {
       "id": "retriever",
       "type": "backend",
       "label": "Retriever",
-      "sublabel": "BM25 + RRF",
-      "pos": [640, 80],
-      "size": [130, 60]
+      "sublabel": "BM25 local + embeddings + RRF",
+      "pos": [620, 70],
+      "size": [150, 56]
     },
     {
       "id": "intake",
       "type": "backend",
       "label": "Intake",
-      "sublabel": "cuentas + top 3",
-      "pos": [640, 200],
-      "size": [130, 60]
+      "sublabel": "clash/contexto por doc",
+      "pos": [620, 190],
+      "size": [150, 56]
     },
     {
       "id": "writer",
       "type": "backend",
       "label": "Writer",
-      "sublabel": "spec por turno",
-      "pos": [640, 320],
-      "size": [130, 60]
+      "sublabel": "clashes vs contexto",
+      "pos": [620, 300],
+      "size": [150, 56]
     },
     {
       "id": "chroma",
       "type": "database",
       "label": "Chroma",
-      "sublabel": ".chroma local",
-      "pos": [860, 80],
-      "size": [130, 60]
+      "sublabel": ".chroma · 11 docs",
+      "pos": [850, 70],
+      "size": [140, 56]
+    },
+    {
+      "id": "checkpointer",
+      "type": "database",
+      "label": "Checkpointer",
+      "sublabel": "checkpoints.sqlite",
+      "pos": [850, 300],
+      "size": [150, 56]
+    },
+    {
+      "id": "phoenix",
+      "type": "external",
+      "label": "Phoenix",
+      "sublabel": "OTel batch :6010",
+      "pos": [220, 300],
+      "size": [140, 56]
     }
   ],
   "boundaries": [
@@ -128,6 +157,22 @@
       "from": "retriever",
       "to": "chroma",
       "label": "RAG híbrido"
+    },
+    {
+      "id": "writer-to-checkpointer",
+      "from": "writer",
+      "to": "checkpointer",
+      "label": "spec + estado"
+    },
+    {
+      "id": "api-to-phoenix",
+      "from": "api",
+      "to": "phoenix",
+      "label": "trazas OTel (batch)",
+      "variant": "dashed",
+      "fromSide": "bottom",
+      "toSide": "top",
+      "labelDy": 24
     }
   ],
   "cards": [
@@ -143,16 +188,18 @@
       "dot": "emerald",
       "title": "Grafo por turno",
       "items": [
-        "Supervisor elige retriever, intake o writer",
-        "Writer reescribe las 7 cajas de la spec"
+        "Supervisor rutea retriever, intake o writer",
+        "Cada nodo corre como mucho una vez por turno",
+        "Supervisor, intake y writer usan modelos LLM por rol"
       ]
     },
     {
-      "dot": "rose",
-      "title": "Corpus",
+      "dot": "violet",
+      "title": "Clashes, cierre y trazas",
       "items": [
-        "Chroma local con 11 docs Andes",
-        "BM25 + embeddings + RRF en el retriever"
+        "Intake interpreta el glosario primero y declara cada doc: clash o contexto",
+        "Los clashes reales se acumulan y dedupean por document_id; closed es pegajoso",
+        "Phoenix on by default: BatchSpanProcessor hacia :6010"
       ]
     }
   ]
