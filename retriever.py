@@ -36,26 +36,25 @@ MAX_EXCERPT_CHARS = 2000
 
 
 def _split_tokens(text: str) -> list[str]:
-    """BM25 tokenizer: plain whitespace split (langchain's default, unchanged).
+    """BM25 tokenizer: plain whitespace split.
 
-    Deliberately no stemming or stopword removal: the lexical half of the
-    ensemble must keep behaving exactly as it did before the local rewrite.
+    Deliberately no stemming or stopword removal: corpus and query go through
+    this same function.
     """
     return text.split()
 
 
 class LocalBM25Retriever(BaseRetriever):
-    """BM25 retriever on ``rank_bm25``, replacing the sunset community one.
+    """BM25 retriever over ``rank_bm25``, exposed as a LangChain ``BaseRetriever``.
 
-    ``langchain_community.retrievers.BM25Retriever`` emits a sunset
-    DeprecationWarning at import, so this keeps the same behaviour locally:
-    the index is built over the corpus documents, the query is tokenized with
-    the same ``str.split()`` preprocessing, and the top-k Documents by BM25
-    score are returned with their original ``page_content`` and ``metadata``.
+    The index is built over the corpus documents with ``BM25Okapi``; the corpus
+    and the query are tokenized with ``str.split()`` by default. The top-k
+    Documents by BM25 score come from ``vectorizer.get_top_n(query, docs, n=k)``
+    with their original ``page_content`` and ``metadata``.
 
-    Subclassing ``BaseRetriever`` is what lets ``EnsembleRetriever`` keep
-    fusing it: both sync ``invoke`` and async ``ainvoke`` flow through the
-    normal ``BaseRetriever`` machinery.
+    Subclassing ``BaseRetriever`` is what lets ``EnsembleRetriever`` fuse it:
+    both sync ``invoke`` and async ``ainvoke`` flow through the normal
+    ``BaseRetriever`` machinery.
     """
 
     vectorizer: Any = None
@@ -88,7 +87,7 @@ class LocalBM25Retriever(BaseRetriever):
     def _get_relevant_documents(
         self, query: str, *, run_manager: CallbackManagerForRetrieverRun
     ) -> list[Document]:
-        """Top-k documents by BM25 score, mirroring the community retriever."""
+        """Top-k documents by BM25 score."""
         processed_query = self.preprocess_func(query)
         return self.vectorizer.get_top_n(processed_query, self.docs, n=self.k)
 

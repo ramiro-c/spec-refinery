@@ -1,9 +1,7 @@
 """FastAPI tests: start / continue / close threads (dummy graph from agents.fakes).
 
-The app is driven in-process through ``httpx.ASGITransport`` instead of
-``fastapi.testclient``: importing starlette's TestClient module trips an
-upstream anyio ``BlockingPortal`` deprecation warning. Entering the router's
-lifespan context keeps app startup/shutdown running.
+The app is driven in-process through ``httpx.ASGITransport``. Entering the
+router's lifespan context keeps app startup/shutdown running.
 """
 
 from __future__ import annotations

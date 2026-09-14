@@ -3,8 +3,7 @@
 All endpoints are async; the graph runs on ``astream`` over the async SQLite
 checkpointer. The graph (and its checkpointer) is built lazily inside the
 request event loop — ``AsyncSqliteSaver`` requires a running loop at
-construction — and cached on ``app.state``. The request/response contract is
-unchanged.
+construction — and cached on ``app.state``.
 """
 
 from __future__ import annotations

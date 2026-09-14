@@ -98,7 +98,7 @@ def test_excerpt_does_not_pass_a_semicolon_off_as_a_full_stop():
     assert out.endswith("…")
 
 
-# --- Local BM25 retriever (replaces the sunset langchain-community one) ------
+# --- Local BM25 retriever ------
 
 
 def _bm25_docs():

@@ -1,10 +1,8 @@
 """System-evidence test runner (qa_system.py) against the fake graph.
 
-Drives the app in-process through ``httpx.ASGITransport`` instead of
-``fastapi.testclient`` (importing starlette's TestClient module trips an
-upstream anyio ``BlockingPortal`` deprecation warning). Entering the router's
-lifespan context keeps app startup/shutdown running. The checkpointer lives in
-a tmp dir and is explicitly closed: the aiosqlite worker thread is
+Drives the app in-process through ``httpx.ASGITransport``. Entering the
+router's lifespan context keeps app startup/shutdown running. The checkpointer
+lives in a tmp dir and is explicitly closed: the aiosqlite worker thread is
 non-daemon, so leaving it open keeps pytest alive.
 """
 
