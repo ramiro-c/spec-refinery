@@ -1,7 +1,7 @@
 import pathlib
 
 from langchain_core.documents import Document
-from retriever import MAX_EXCERPT_CHARS, _excerpt, retrieve
+from retriever import MAX_EXCERPT_CHARS, LocalBM25Retriever, _excerpt, retrieve
 
 
 class _Stub:
@@ -96,3 +96,58 @@ def test_excerpt_does_not_pass_a_semicolon_off_as_a_full_stop():
     out = _excerpt(text, limit=280)
     assert not out.endswith(";")
     assert out.endswith("…")
+
+
+# --- Local BM25 retriever (replaces the sunset langchain-community one) ------
+
+
+def _bm25_docs():
+    """Three docs whose BM25 ordering for the query "carrito" is known.
+
+    ``b`` is the shortest match, so BM25 length normalization ranks it above
+    ``a``; ``c`` shares no term with the query and comes last.
+    """
+    return [
+        Document(
+            page_content="el carrito cierra el precio",
+            metadata={"document_id": "a", "title": "A"},
+        ),
+        Document(page_content="el carrito", metadata={"document_id": "b", "title": "B"}),
+        Document(
+            page_content="flag de cyber monday",
+            metadata={"document_id": "c", "title": "C"},
+        ),
+    ]
+
+
+def test_local_bm25_orders_documents_by_score():
+    retriever = LocalBM25Retriever.from_documents(_bm25_docs(), k=3)
+    hits = retriever.invoke("carrito")
+    assert [hit.metadata["document_id"] for hit in hits] == ["b", "a", "c"]
+
+
+def test_local_bm25_respects_k_and_preserves_content_and_metadata():
+    retriever = LocalBM25Retriever.from_documents(_bm25_docs(), k=2)
+    hits = retriever.invoke("carrito")
+    assert len(hits) == 2
+    # The top hit is the original Document, content and metadata intact.
+    assert hits[0].page_content == "el carrito"
+    assert hits[0].metadata == {"document_id": "b", "title": "B"}
+
+
+async def test_local_bm25_supports_async_invoke():
+    """BaseRetriever's async path works, as EnsembleRetriever relies on it."""
+    retriever = LocalBM25Retriever.from_documents(_bm25_docs(), k=1)
+    hits = await retriever.ainvoke("carrito")
+    assert len(hits) == 1
+    assert hits[0].metadata["document_id"] == "b"
+
+
+def test_local_bm25_handles_a_query_with_no_matching_terms():
+    """A query nothing matches returns k documents instead of raising."""
+    retriever = LocalBM25Retriever.from_documents(_bm25_docs(), k=2)
+    hits = retriever.invoke("zzz inexistente")
+    assert len(hits) == 2
+    known = {"a", "b", "c"}
+    assert all(hit.metadata["document_id"] in known for hit in hits)
+

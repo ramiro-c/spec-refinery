@@ -10,11 +10,16 @@ thread, never bare inside an async function.
 from __future__ import annotations
 
 import asyncio
+from collections.abc import Iterable
+from typing import Any, Callable
 
 from langchain_chroma import Chroma
 from langchain_classic.retrievers import EnsembleRetriever
-from langchain_community.retrievers import BM25Retriever
+from langchain_core.callbacks import CallbackManagerForRetrieverRun
 from langchain_core.documents import Document
+from langchain_core.retrievers import BaseRetriever
+from pydantic import ConfigDict, Field
+from rank_bm25 import BM25Okapi
 
 from config import CHROMA_DIR, CORPUS_DIR, TOP_K, VECTOR_BACKEND
 from schemas import Citation
@@ -28,6 +33,65 @@ COLLECTION_NAME = "spec-refinery"
 # read. This is only a safety valve against a pathological document blowing up
 # the interrogator prompt — nothing in the corpus comes close to it.
 MAX_EXCERPT_CHARS = 2000
+
+
+def _split_tokens(text: str) -> list[str]:
+    """BM25 tokenizer: plain whitespace split (langchain's default, unchanged).
+
+    Deliberately no stemming or stopword removal: the lexical half of the
+    ensemble must keep behaving exactly as it did before the local rewrite.
+    """
+    return text.split()
+
+
+class LocalBM25Retriever(BaseRetriever):
+    """BM25 retriever on ``rank_bm25``, replacing the sunset community one.
+
+    ``langchain_community.retrievers.BM25Retriever`` emits a sunset
+    DeprecationWarning at import, so this keeps the same behaviour locally:
+    the index is built over the corpus documents, the query is tokenized with
+    the same ``str.split()`` preprocessing, and the top-k Documents by BM25
+    score are returned with their original ``page_content`` and ``metadata``.
+
+    Subclassing ``BaseRetriever`` is what lets ``EnsembleRetriever`` keep
+    fusing it: both sync ``invoke`` and async ``ainvoke`` flow through the
+    normal ``BaseRetriever`` machinery.
+    """
+
+    vectorizer: Any = None
+    docs: list[Document] = Field(repr=False, default_factory=list)
+    k: int = 4
+    preprocess_func: Callable[[str], list[str]] = _split_tokens
+
+    model_config = ConfigDict(arbitrary_types_allowed=True)
+
+    @classmethod
+    def from_documents(
+        cls,
+        documents: Iterable[Document],
+        *,
+        bm25_params: dict[str, Any] | None = None,
+        preprocess_func: Callable[[str], list[str]] = _split_tokens,
+        **kwargs: Any,
+    ) -> LocalBM25Retriever:
+        """Build the BM25 index from ``documents`` and keep them for retrieval."""
+        docs = list(documents)
+        corpus = [preprocess_func(doc.page_content) for doc in docs]
+        vectorizer = BM25Okapi(corpus, **(bm25_params or {}))
+        return cls(
+            vectorizer=vectorizer,
+            docs=docs,
+            preprocess_func=preprocess_func,
+            **kwargs,
+        )
+
+    def _get_relevant_documents(
+        self, query: str, *, run_manager: CallbackManagerForRetrieverRun
+    ) -> list[Document]:
+        """Top-k documents by BM25 score, mirroring the community retriever."""
+        processed_query = self.preprocess_func(query)
+        return self.vectorizer.get_top_n(processed_query, self.docs, n=self.k)
+
 
 # Lazy production ensemble (built on first retrieval, not at import).
 _ensemble: EnsembleRetriever | None = None
@@ -85,7 +149,7 @@ def _build_production_retrievers():
     from embeddings import get_embeddings
 
     documents = load_corpus_documents()
-    lexical = BM25Retriever.from_documents(documents, k=TOP_K)
+    lexical = LocalBM25Retriever.from_documents(documents, k=TOP_K)
     vectorstore = Chroma(
         persist_directory=str(CHROMA_DIR),
         embedding_function=get_embeddings(),

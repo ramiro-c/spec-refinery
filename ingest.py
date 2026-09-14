@@ -1,7 +1,7 @@
 """Corpus ingestion into local Chroma.
 
-Reads markdown with front-matter, persists vectors and builds BM25 over the
-same Documents. The CLI `python ingest.py` runs the full ingestion.
+Reads markdown with front-matter and persists its vectors. The CLI
+`python ingest.py` runs the full ingestion.
 """
 
 from __future__ import annotations
@@ -9,7 +9,6 @@ from __future__ import annotations
 import sys
 
 from langchain_chroma import Chroma
-from langchain_community.retrievers import BM25Retriever
 
 from config import CHROMA_DIR, TOP_K
 from embeddings import get_embeddings
