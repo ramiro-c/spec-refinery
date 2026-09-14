@@ -65,7 +65,7 @@ Cada nodo corre **como mucho una vez por turno**: volver a interrogar sobre el m
 | **Supervisor** | Rutea según rúbrica dura; no busca ni escribe. |
 | **Retriever** | RAG híbrido (BM25 + embeddings + RRF) sobre Chroma. |
 | **Intake** (interrogador) | LLM: lee el ticket, todo el transcript y las reglas recuperadas, y decide qué preguntar (hasta 3 por ronda, 5 rondas) y si la spec ya se puede cerrar. Sin catálogo de preguntas ni scoring por palabras clave. |
-| **Writer** | Reescribe `que_entendimos`, `criterios` y `servicios`. Separa `choques` reales (sólo lo que el pedido contradice) de `contexto` (lo que el RAG trajo). No puntúa: el veredicto (`estado`) es del interrogador. |
+| **Writer** | Reescribe `understanding`, `criteria` y `services`. Separa `clashes` reales (sólo lo que el pedido contradice) de `context` (lo que el RAG trajo). No puntúa: el veredicto (`status`) es del interrogador. |
 
 La API (`app.py`) es el sistema; Streamlit (`ui.py`) es la piel.
 
@@ -140,10 +140,10 @@ What it proves:
 
 - **S1** `GET /health` + `POST /threads` → 200 with a valid Pydantic response.
 - **S2** Golden question #1 (from `golden_set.json`) in a new thread → 200 and
-  retrieved evidence (`spec.choques` reales y/o `spec.contexto`) with
+   retrieved evidence (`spec.clashes` reales y/o `spec.context`) with
   `document_id`.
 - **S3** Golden question #2 in a **different** new thread → same retrieval path.
-- **S4** Follow-up message on the **same** thread → 200 with `spec.pedido`
+- **S4** Follow-up message on the **same** thread → 200 with `spec.request`
   unchanged → the checkpointer kept state (multi-turn continuity).
 - **S5** Malformed payload (`POST /threads` without `ticket`) → 422 with a
   Pydantic error detail.

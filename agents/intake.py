@@ -43,7 +43,7 @@ Who decides what:
   that disambiguates it. If the definition is silent, partial, or the intent
   still skips a mandatory step, the clash is REAL: name the document and
   resolve it as 1, 2 or 3. Never let the benign reading drop a real clash.
-  These are legitimate answers, not evasions. Record the outcome in `decisiones`
+  These are legitimate answers, not evasions. Record the outcome in `decisions`
   and STOP ASKING about it. You may still ask about the CONSEQUENCES.
 
 Your budget (the PM sees it too, so respect it):
@@ -59,8 +59,8 @@ How you work:
   If the definition does not settle the intent, ask instead of assuming a benign
   reading or conceding a conflict.
 - Declare a type for EVERY retrieved document, one entry each in
-  `clasificaciones`: "choque" when the request genuinely contradicts that rule,
-  "contexto" when the document informs the request without being contradicted.
+  `classifications`: "clash" when the request genuinely contradicts that rule,
+  "context" when the document informs the request without being contradicted.
   Use the exact `document_id` you were given; never invent one.
 - Ground every challenge in the citations you were given. Do not invent rules
   that are not cited.
@@ -71,7 +71,7 @@ How you work:
   opened genuinely new ground. A wall of repeated questions is a failure.
 - There is no checklist. Attack what is actually missing for THIS request.
 
-se_puede_cerrar is true when an engineer could build this and a tester could
+can_close is true when an engineer could build this and a tester could
 write the acceptance criteria without asking you anything else. It is your
 honest read of readiness — it never gates the human's right to close.
 
@@ -97,9 +97,9 @@ def _snapshot(state: RefineryState, round_number: int) -> str:
     conversation = "\n".join(lines) if lines else "(empty)"
     spec = state.get("spec")
     prior = spec.model_dump_json(indent=2) if spec is not None else "(none)"
-    settled = (spec.decisiones if spec is not None else None) or []
+    settled = (spec.decisions if spec is not None else None) or []
     decisions_text = (
-        "\n".join(f"- {d.tema}: {d.decision}" for d in settled)
+        "\n".join(f"- {d.topic}: {d.decision}" for d in settled)
         if settled
         else "(none yet)"
     )
@@ -128,17 +128,17 @@ async def interrogate(state: RefineryState, llm: BaseChatModel) -> dict:
             HumanMessage(content=_snapshot(state, round_number)),
         ]
     )
-    preguntas = [q.strip() for q in verdict.preguntas if q.strip()]
+    questions = [q.strip() for q in verdict.questions if q.strip()]
     # The budget is a contract with the PM, not a suggestion to the model.
-    preguntas = [] if final_round else preguntas[:MAX_QUESTIONS_PER_ROUND]
+    questions = [] if final_round else questions[:MAX_QUESTIONS_PER_ROUND]
     update: dict = {
-        "questions": preguntas,
-        "decisiones": list(verdict.decisiones),
-        "clasificaciones": list(verdict.clasificaciones),
+        "questions": questions,
+        "decisions": list(verdict.decisions),
+        "classifications": list(verdict.classifications),
         "assessment": SpecStatus(
-            se_puede_cerrar=verdict.se_puede_cerrar,
-            vaguedad=verdict.vaguedad,
-            razon=verdict.razon,
+            can_close=verdict.can_close,
+            vagueness=verdict.vagueness,
+            reason=verdict.reason,
         ),
         "grilled": True,
         "round_count": round_number,
@@ -147,7 +147,7 @@ async def interrogate(state: RefineryState, llm: BaseChatModel) -> dict:
         # knows what it already asked.
         "messages": [
             AIMessage(
-                content="\n".join(preguntas) or verdict.razon,
+                content="\n".join(questions) or verdict.reason,
                 name="intake",
             )
         ],

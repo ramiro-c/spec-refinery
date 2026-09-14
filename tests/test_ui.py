@@ -1,7 +1,7 @@
 import contextlib
 
 import ui
-from ui import _assistant_reply, _spec_esta_abierta
+from ui import _assistant_reply, _spec_is_open
 
 
 class _FakeSessionState(dict):
@@ -92,19 +92,19 @@ class _FakeStreamlit:
 
 def test_assistant_reply_lists_questions_after_collision():
     spec = {
-        "preguntas": [
+        "questions": [
             "El pedido se pisa con «El precio se cierra en el carrito» "
             "(adr-cart-price.md). ¿El comprar ahora saltea el carrito?",
             "¿Qué productos entran?",
             "¿Qué es más rápido?",
         ],
-        "choques": [
+        "clashes": [
             {
                 "document_id": "adr-cart-price.md",
                 "title": "El precio se cierra en el carrito",
             }
         ],
-        "estado": {"se_puede_cerrar": False, "vaguedad": 4, "razon": "faltan slots"},
+        "status": {"can_close": False, "vagueness": 4, "reason": "faltan slots"},
     }
     text = _assistant_reply(spec)
     assert "Hay un choque con El precio se cierra en el carrito." in text
@@ -116,14 +116,14 @@ def test_assistant_reply_lists_questions_after_collision():
 def test_assistant_reply_does_not_announce_a_collision_nobody_asks_about():
     """Later rounds keep the citation but ask about other gaps."""
     spec = {
-        "preguntas": ["¿Quién pide esto?", "¿Qué queda fuera de alcance?"],
-        "choques": [
+        "questions": ["¿Quién pide esto?", "¿Qué queda fuera de alcance?"],
+        "clashes": [
             {
                 "document_id": "spec-cyber-banner.md",
                 "title": "Banner Cyber Monday del año pasado",
             }
         ],
-        "estado": {"se_puede_cerrar": False, "vaguedad": 3, "razon": "faltan slots"},
+        "status": {"can_close": False, "vagueness": 3, "reason": "faltan slots"},
     }
     text = _assistant_reply(spec)
     assert "Hay un choque" not in text
@@ -133,24 +133,24 @@ def test_assistant_reply_does_not_announce_a_collision_nobody_asks_about():
 
 def test_assistant_reply_without_questions_when_closable():
     spec = {
-        "preguntas": [],
-        "choques": [],
-        "estado": {"se_puede_cerrar": True, "vaguedad": 0, "razon": "ok"},
+        "questions": [],
+        "clashes": [],
+        "status": {"can_close": True, "vagueness": 0, "reason": "ok"},
     }
     assert "cerrar la spec" in _assistant_reply(spec)
 
 
 def test_close_controls_hidden_once_the_spec_is_closed():
     """A closed spec means no close caption and no close button."""
-    assert _spec_esta_abierta({"cerrada": True}) is False
-    assert _spec_esta_abierta({"cerrada": False}) is True
-    assert _spec_esta_abierta({}) is True
+    assert _spec_is_open({"closed": True}) is False
+    assert _spec_is_open({"closed": False}) is True
+    assert _spec_is_open({}) is True
 
 
-def test_main_hides_close_controls_when_spec_cerrada(monkeypatch):
+def test_main_hides_close_controls_when_spec_closed(monkeypatch):
     """The real render gate: a closed spec emits no close button/caption."""
     fake = _FakeStreamlit(
-        thread_id="t1", spec={"cerrada": True}, messages=[("user", "hola")]
+        thread_id="t1", spec={"closed": True}, messages=[("user", "hola")]
     )
     monkeypatch.setattr(ui, "st", fake)
 
@@ -160,10 +160,10 @@ def test_main_hides_close_controls_when_spec_cerrada(monkeypatch):
     assert not any("Para cerrar" in caption for caption in fake.captions)
 
 
-def test_main_shows_close_controls_when_spec_abierta(monkeypatch):
+def test_main_shows_close_controls_when_spec_open(monkeypatch):
     """The real render gate: an open spec emits the close button and caption."""
     fake = _FakeStreamlit(
-        thread_id="t1", spec={"cerrada": False}, messages=[("user", "hola")]
+        thread_id="t1", spec={"closed": False}, messages=[("user", "hola")]
     )
     monkeypatch.setattr(ui, "st", fake)
 
@@ -174,7 +174,7 @@ def test_main_shows_close_controls_when_spec_abierta(monkeypatch):
 
 
 def test_main_shows_close_controls_for_a_spec_without_the_flag(monkeypatch):
-    """A spec predating `cerrada` defaults to open, so the controls show."""
+    """A spec predating `closed` defaults to open, so the controls show."""
     fake = _FakeStreamlit(thread_id="t1", spec={}, messages=[("user", "hola")])
     monkeypatch.setattr(ui, "st", fake)
 
@@ -186,9 +186,9 @@ def test_main_shows_close_controls_for_a_spec_without_the_flag(monkeypatch):
 
 def test_assistant_reply_skips_blank_questions():
     spec = {
-        "preguntas": ["  ", "¿Alcance?"],
-        "choques": [],
-        "estado": {"se_puede_cerrar": False, "vaguedad": 1, "razon": "alcance"},
+        "questions": ["  ", "¿Alcance?"],
+        "clashes": [],
+        "status": {"can_close": False, "vagueness": 1, "reason": "alcance"},
     }
     text = _assistant_reply(spec)
     assert "Necesito aclarar el pedido." in text
@@ -197,24 +197,24 @@ def test_assistant_reply_skips_blank_questions():
 
 
 def test_assistant_reply_does_not_announce_context_as_a_clash():
-    """The lead keys off real `choques`; a document in `contexto` is silent."""
-    pregunta = "¿Cuándo se reserva el stock? (adr-stock-reserve.md)"
+    """The lead keys off real `clashes`; a document in `context` is silent."""
+    question = "¿Cuándo se reserva el stock? (adr-stock-reserve.md)"
     context_only = {
-        "preguntas": [pregunta],
-        "choques": [],
-        "contexto": [
+        "questions": [question],
+        "clashes": [],
+        "context": [
             {
                 "document_id": "adr-stock-reserve.md",
                 "title": "El stock se reserva al confirmar",
             }
         ],
-        "estado": {"se_puede_cerrar": False, "vaguedad": 3, "razon": "contexto"},
+        "status": {"can_close": False, "vagueness": 3, "reason": "contexto"},
     }
     text = _assistant_reply(context_only)
     assert "Hay un choque" not in text
     assert "Necesito aclarar el pedido." in text
 
-    same_doc_as_clash = {**context_only, "choques": context_only["contexto"]}
+    same_doc_as_clash = {**context_only, "clashes": context_only["context"]}
     assert "Hay un choque con El stock se reserva al confirmar." in _assistant_reply(
         same_doc_as_clash
     )
@@ -225,14 +225,14 @@ def test_render_spec_separates_clashes_from_context(monkeypatch):
     fake = _FakeStreamlit()
     monkeypatch.setattr(ui, "st", fake)
     spec = {
-        "pedido": "checkout sin carrito",
-        "choques": [
+        "request": "checkout sin carrito",
+        "clashes": [
             {
                 "document_id": "adr-cart-price.md",
                 "title": "El precio se cierra en el carrito",
             }
         ],
-        "contexto": [
+        "context": [
             {
                 "document_id": "adr-stock-reserve.md",
                 "title": "El stock se reserva al confirmar",

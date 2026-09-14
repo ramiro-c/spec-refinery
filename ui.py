@@ -14,37 +14,37 @@ HTTP_TIMEOUT = 120.0
 PANEL_HEIGHT = 640
 
 
-def _collision_asked_about(spec: dict, preguntas: list[str]) -> dict | None:
+def _collision_asked_about(spec: dict, questions: list[str]) -> dict | None:
     """La cita que alguna pregunta de este turno realmente menciona."""
-    for citation in spec.get("choques") or []:
+    for citation in spec.get("clashes") or []:
         doc_id = str(citation.get("document_id") or "")
-        if doc_id and any(doc_id in pregunta for pregunta in preguntas):
+        if doc_id and any(doc_id in question for question in questions):
             return citation
     return None
 
 
 def _assistant_reply(spec: dict) -> str:
     """Arma el turno del sistema: choque (si hay) + las preguntas de este turno."""
-    preguntas = [
-        str(pregunta).strip()
-        for pregunta in (spec.get("preguntas") or [])
-        if str(pregunta).strip()
+    questions = [
+        str(question).strip()
+        for question in (spec.get("questions") or [])
+        if str(question).strip()
     ]
-    if not preguntas:
-        estado = spec.get("estado") or {}
-        if estado.get("se_puede_cerrar"):
+    if not questions:
+        status = spec.get("status") or {}
+        if status.get("can_close"):
             return "Listo: no me quedan preguntas. Si te cierra, podés cerrar la spec."
-        razon = str(estado.get("razon") or "").strip()
-        return razon or "No tengo preguntas nuevas. Seguí o cerrá la spec."
+        reason = str(status.get("reason") or "").strip()
+        return reason or "No tengo preguntas nuevas. Seguí o cerrá la spec."
 
-    if len(preguntas) == 1:
+    if len(questions) == 1:
         header = "Me queda una pregunta."
     else:
-        header = f"Me quedan {len(preguntas)} preguntas."
+        header = f"Me quedan {len(questions)} preguntas."
 
     # Only announce the collision when this turn actually asks about it;
     # otherwise the lead advertises a document none of the questions mention.
-    collision = _collision_asked_about(spec, preguntas)
+    collision = _collision_asked_about(spec, questions)
     if collision is not None:
         label = (
             collision.get("title")
@@ -55,38 +55,38 @@ def _assistant_reply(spec: dict) -> str:
     else:
         lead = f"Necesito aclarar el pedido. {header}"
     numbered = "\n".join(
-        f"{idx}. {pregunta}" for idx, pregunta in enumerate(preguntas, start=1)
+        f"{idx}. {question}" for idx, question in enumerate(questions, start=1)
     )
     return f"{lead}\n\n{numbered}"
 
 
 def _closing_reply(spec: dict) -> str:
     """Turno de cierre: la spec queda congelada, con o sin huecos."""
-    estado = spec.get("estado") or {}
-    vaguedad = estado.get("vaguedad", 0)
-    if estado.get("se_puede_cerrar"):
+    status = spec.get("status") or {}
+    vagueness = status.get("vagueness", 0)
+    if status.get("can_close"):
         return "Spec cerrada. No quedaron preguntas abiertas ni huecos."
     return (
-        f"Spec cerrada a pedido tuyo, pero queda vaguedad {vaguedad}. "
+        f"Spec cerrada a pedido tuyo, pero queda vaguedad {vagueness}. "
         "Cerrar lo decidís vos; mirá el panel de la derecha antes de pasarla "
         "a desarrollo."
     )
 
 
-def _spec_esta_abierta(spec: dict | None) -> bool:
+def _spec_is_open(spec: dict | None) -> bool:
     """La spec sigue abierta mientras no esté marcada como cerrada."""
-    return not bool((spec or {}).get("cerrada"))
+    return not bool((spec or {}).get("closed"))
 
 
 def _absorb(payload: dict) -> None:
     """Guarda spec y presupuesto de rondas que devolvió el API."""
     st.session_state.spec = payload["spec"]
-    st.session_state.ronda = payload.get("ronda", st.session_state.ronda)
-    st.session_state.max_rondas = payload.get(
-        "max_rondas", st.session_state.max_rondas
+    st.session_state.round = payload.get("round", st.session_state.round)
+    st.session_state.max_rounds = payload.get(
+        "max_rounds", st.session_state.max_rounds
     )
-    st.session_state.max_preguntas = payload.get(
-        "max_preguntas_por_ronda", st.session_state.max_preguntas
+    st.session_state.max_questions = payload.get(
+        "max_questions_per_round", st.session_state.max_questions
     )
 
 
@@ -148,12 +148,12 @@ def _init_session() -> None:
         st.session_state.pending_close = False
     if "api_error" not in st.session_state:
         st.session_state.api_error = None
-    if "ronda" not in st.session_state:
-        st.session_state.ronda = 0
-    if "max_rondas" not in st.session_state:
-        st.session_state.max_rondas = 5
-    if "max_preguntas" not in st.session_state:
-        st.session_state.max_preguntas = 3
+    if "round" not in st.session_state:
+        st.session_state.round = 0
+    if "max_rounds" not in st.session_state:
+        st.session_state.max_rounds = 5
+    if "max_questions" not in st.session_state:
+        st.session_state.max_questions = 3
 
 
 def _post_start(ticket: str) -> dict:
@@ -199,71 +199,71 @@ def _render_citation(citation: dict) -> None:
 def _render_spec(spec: dict) -> None:
     """Renderiza las 8 cajas del SpecDocument."""
     st.subheader("Pedido")
-    st.write(spec.get("pedido") or "—")
+    st.write(spec.get("request") or "—")
 
     st.subheader("Qué entendimos")
-    st.write(spec.get("que_entendimos") or "—")
+    st.write(spec.get("understanding") or "—")
 
     st.subheader("Choques reales")
-    choques = spec.get("choques") or []
-    if choques:
-        for citation in choques:
+    clashes = spec.get("clashes") or []
+    if clashes:
+        for citation in clashes:
             _render_citation(citation)
     else:
         st.write("—")
 
     st.subheader("Contexto recuperado")
-    contexto = spec.get("contexto") or []
-    if contexto:
-        for citation in contexto:
+    context = spec.get("context") or []
+    if context:
+        for citation in context:
             _render_citation(citation)
     else:
         st.write("—")
 
     st.subheader("Decisiones")
-    decisiones = spec.get("decisiones") or []
-    if decisiones:
-        for decision in decisiones:
-            st.markdown(f"**{decision.get('tema', '—')}** — {decision.get('decision', '')}")
-            impacto = str(decision.get("impacto") or "").strip()
-            if impacto:
-                st.caption(f"Impacto: {impacto}")
+    decisions = spec.get("decisions") or []
+    if decisions:
+        for decision in decisions:
+            st.markdown(f"**{decision.get('topic', '—')}** — {decision.get('decision', '')}")
+            impact = str(decision.get("impact") or "").strip()
+            if impact:
+                st.caption(f"Impacto: {impact}")
     else:
         st.write("—")
 
     st.subheader("Servicios que tocaría")
-    servicios = spec.get("servicios") or []
-    if servicios:
-        for servicio in servicios:
-            st.markdown(f"- {servicio}")
+    services = spec.get("services") or []
+    if services:
+        for service in services:
+            st.markdown(f"- {service}")
     else:
         st.write("—")
 
     st.subheader("Criterios")
-    criterios = spec.get("criterios") or []
-    if criterios:
-        for idx, criterio in enumerate(criterios, start=1):
-            st.markdown(f"**{idx}.** Dado {criterio.get('dado', '—')}")
-            st.markdown(f"Cuando {criterio.get('cuando', '—')}")
-            st.markdown(f"Entonces {criterio.get('entonces', '—')}")
+    criteria = spec.get("criteria") or []
+    if criteria:
+        for idx, criterion in enumerate(criteria, start=1):
+            st.markdown(f"**{idx}.** Dado {criterion.get('given', '—')}")
+            st.markdown(f"Cuando {criterion.get('when', '—')}")
+            st.markdown(f"Entonces {criterion.get('then', '—')}")
     else:
         st.write("—")
 
     st.subheader("Preguntas abiertas")
-    preguntas = spec.get("preguntas") or []
-    if preguntas:
-        for idx, pregunta in enumerate(preguntas, start=1):
-            st.markdown(f"{idx}. {pregunta}")
+    questions = spec.get("questions") or []
+    if questions:
+        for idx, question in enumerate(questions, start=1):
+            st.markdown(f"{idx}. {question}")
     else:
         st.write("—")
 
     st.subheader("Estado")
-    estado = spec.get("estado") or {}
-    cierre = "se puede cerrar" if estado.get("se_puede_cerrar") else "no cerraría"
-    vaguedad = estado.get("vaguedad", 0)
-    razon = estado.get("razon") or "—"
-    st.markdown(f"**{cierre}** · vaguedad: {vaguedad}")
-    st.caption(razon)
+    status = spec.get("status") or {}
+    closing = "se puede cerrar" if status.get("can_close") else "no cerraría"
+    vagueness = status.get("vagueness", 0)
+    reason = status.get("reason") or "—"
+    st.markdown(f"**{closing}** · vaguedad: {vagueness}")
+    st.caption(reason)
 
 
 def _render_intro() -> None:
@@ -286,8 +286,8 @@ def _render_intro() -> None:
     )
     st.markdown("**Reglas del juego**")
     st.markdown(
-        f"- Hasta **{st.session_state.max_preguntas} preguntas por ronda**\n"
-        f"- Máximo **{st.session_state.max_rondas} rondas**; después la spec "
+        f"- Hasta **{st.session_state.max_questions} preguntas por ronda**\n"
+        f"- Máximo **{st.session_state.max_rounds} rondas**; después la spec "
         "se congela con lo que haya\n"
         "- **Cerrás vos** cuando quieras: el botón o pedíselo al chat"
     )
@@ -301,18 +301,18 @@ def _render_intro() -> None:
 
 def _render_round_meter() -> None:
     """Cuánto presupuesto de interrogatorio queda."""
-    ronda = int(st.session_state.ronda or 0)
-    total = int(st.session_state.max_rondas or 5)
-    restantes = max(total - ronda, 0)
-    if restantes:
-        detalle = f"quedan {restantes}"
+    round = int(st.session_state.round or 0)
+    total = int(st.session_state.max_rounds or 5)
+    remaining = max(total - round, 0)
+    if remaining:
+        detail = f"quedan {remaining}"
     else:
-        detalle = "spec congelada"
+        detail = "spec congelada"
     st.caption(
-        f"Ronda **{min(ronda, total)} de {total}** · {detalle} · "
-        f"hasta {st.session_state.max_preguntas} preguntas por ronda"
+        f"Ronda **{min(round, total)} de {total}** · {detail} · "
+        f"hasta {st.session_state.max_questions} preguntas por ronda"
     )
-    st.progress(min(ronda / total, 1.0) if total else 0.0)
+    st.progress(min(round / total, 1.0) if total else 0.0)
 
 
 def main() -> None:
@@ -341,7 +341,7 @@ def main() -> None:
                     with st.chat_message(role):
                         st.write(text)
 
-        if st.session_state.thread_id and _spec_esta_abierta(st.session_state.spec):
+        if st.session_state.thread_id and _spec_is_open(st.session_state.spec):
             st.caption(
                 "Para cerrar: tocá el botón o escribilo en el chat "
                 "(«cerrá la spec»)."

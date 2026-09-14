@@ -74,16 +74,16 @@ class MessageRequest(BaseModel):
 class StartThreadResponse(BaseModel):
     thread_id: str
     spec: SpecDocument
-    ronda: int
-    max_rondas: int = MAX_ROUNDS
-    max_preguntas_por_ronda: int = MAX_QUESTIONS_PER_ROUND
+    round: int
+    max_rounds: int = MAX_ROUNDS
+    max_questions_per_round: int = MAX_QUESTIONS_PER_ROUND
 
 
 class SpecResponse(BaseModel):
     spec: SpecDocument
-    ronda: int
-    max_rondas: int = MAX_ROUNDS
-    max_preguntas_por_ronda: int = MAX_QUESTIONS_PER_ROUND
+    round: int
+    max_rounds: int = MAX_ROUNDS
+    max_questions_per_round: int = MAX_QUESTIONS_PER_ROUND
 
 
 def _thread_config(thread_id: str) -> dict:
@@ -140,7 +140,7 @@ async def start_thread(
     return StartThreadResponse(
         thread_id=thread_id,
         spec=final["spec"],
-        ronda=int(final.get("round_count") or 0),
+        round=int(final.get("round_count") or 0),
     )
 
 
@@ -164,7 +164,7 @@ async def continue_thread(
         thread_id=thread_id,
     )
     return SpecResponse(
-        spec=final["spec"], ronda=int(final.get("round_count") or 0)
+        spec=final["spec"], round=int(final.get("round_count") or 0)
     )
 
 
@@ -183,5 +183,5 @@ async def close_thread(
         close_requested=True,
     )
     return SpecResponse(
-        spec=final["spec"], ronda=int(final.get("round_count") or 0)
+        spec=final["spec"], round=int(final.get("round_count") or 0)
     )

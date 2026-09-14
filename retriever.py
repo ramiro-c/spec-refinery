@@ -50,21 +50,21 @@ def _parse_front_matter(text: str) -> tuple[dict[str, str], str]:
 
 def load_corpus_documents() -> list[Document]:
     """Load the markdown corpus with document_id and title from front-matter."""
-    documentos: list[Document] = []
-    for ruta in sorted(CORPUS_DIR.rglob("*.md")):
-        texto = ruta.read_text(encoding="utf-8")
-        meta, cuerpo = _parse_front_matter(texto)
-        document_id = meta.get("document_id") or ruta.name
-        documentos.append(
+    documents: list[Document] = []
+    for path in sorted(CORPUS_DIR.rglob("*.md")):
+        text = path.read_text(encoding="utf-8")
+        meta, body = _parse_front_matter(text)
+        document_id = meta.get("document_id") or path.name
+        documents.append(
             Document(
-                page_content=cuerpo.strip(),
+                page_content=body.strip(),
                 metadata={
                     "document_id": document_id,
                     "title": meta.get("title", ""),
                 },
             )
         )
-    return documentos
+    return documents
 
 
 def build_hybrid(lexical, semantic) -> EnsembleRetriever:
@@ -84,8 +84,8 @@ def _build_production_retrievers():
         )
     from embeddings import get_embeddings
 
-    documentos = load_corpus_documents()
-    lexical = BM25Retriever.from_documents(documentos, k=TOP_K)
+    documents = load_corpus_documents()
+    lexical = BM25Retriever.from_documents(documents, k=TOP_K)
     vectorstore = Chroma(
         persist_directory=str(CHROMA_DIR),
         embedding_function=get_embeddings(),

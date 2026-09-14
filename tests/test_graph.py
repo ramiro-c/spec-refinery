@@ -33,8 +33,8 @@ async def test_open_turn_visits_retriever_intake_writer():
     g = _graph()
     hops, final = await run_turn(g, CYBER_TICKET, [HumanMessage(content=CYBER_TICKET)])
     assert hops == ["supervisor", "retriever", "supervisor", "intake", "supervisor", "writer"]
-    assert final["spec"].choques[0].document_id == "adr-cart-price.md"
-    assert len(final["spec"].preguntas) == 3
+    assert final["spec"].clashes[0].document_id == "adr-cart-price.md"
+    assert len(final["spec"].questions) == 3
 
 
 async def test_close_skips_to_writer():
@@ -47,7 +47,7 @@ async def test_close_skips_to_writer():
     )
     assert "retriever" not in hops
     assert hops[-1] == "writer"
-    assert final["spec"].preguntas == []
+    assert final["spec"].questions == []
 
 
 async def test_turn_visits_each_node_at_most_once():
@@ -67,7 +67,7 @@ async def test_closed_thread_stays_closed_after_a_later_message():
     _, opened = await run_turn(
         g, CYBER_TICKET, [HumanMessage(content=CYBER_TICKET)], thread_id=thread
     )
-    assert opened["spec"].cerrada is False
+    assert opened["spec"].closed is False
 
     _, closed = await run_turn(
         g,
@@ -76,12 +76,12 @@ async def test_closed_thread_stays_closed_after_a_later_message():
         thread_id=thread,
         close_requested=True,
     )
-    assert closed["spec"].cerrada is True
+    assert closed["spec"].closed is True
 
     _, after = await run_turn(
         g, CYBER_TICKET, [HumanMessage(content="otra respuesta")], thread_id=thread
     )
-    assert after["spec"].cerrada is True
+    assert after["spec"].closed is True
 
 
 async def test_open_thread_stays_open_after_a_later_message():
@@ -92,15 +92,15 @@ async def test_open_thread_stays_open_after_a_later_message():
     _, opened = await run_turn(
         g, CYBER_TICKET, [HumanMessage(content=CYBER_TICKET)], thread_id=thread
     )
-    assert opened["spec"].cerrada is False
+    assert opened["spec"].closed is False
 
     _, after = await run_turn(
         g, CYBER_TICKET, [HumanMessage(content="para todo, no medimos")], thread_id=thread
     )
-    assert after["spec"].cerrada is False
+    assert after["spec"].closed is False
 
 
-async def test_close_keeps_accumulated_clashes_and_contexto():
+async def test_close_keeps_accumulated_clashes_and_context():
     """Closing retrieves nothing, yet the panel keeps real clashes and context."""
     g = _persistent_graph()
     thread = "close-keeps-clashes"
@@ -108,8 +108,8 @@ async def test_close_keeps_accumulated_clashes_and_contexto():
     _, opened = await run_turn(
         g, CYBER_TICKET, [HumanMessage(content=CYBER_TICKET)], thread_id=thread
     )
-    assert [c.document_id for c in opened["spec"].choques] == ["adr-cart-price.md"]
-    assert [c.document_id for c in opened["spec"].contexto] == ["adr-cart-price.md"]
+    assert [c.document_id for c in opened["spec"].clashes] == ["adr-cart-price.md"]
+    assert [c.document_id for c in opened["spec"].context] == ["adr-cart-price.md"]
 
     _, closed = await run_turn(
         g,
@@ -118,6 +118,6 @@ async def test_close_keeps_accumulated_clashes_and_contexto():
         thread_id=thread,
         close_requested=True,
     )
-    assert closed["spec"].cerrada is True
-    assert [c.document_id for c in closed["spec"].choques] == ["adr-cart-price.md"]
-    assert [c.document_id for c in closed["spec"].contexto] == ["adr-cart-price.md"]
+    assert closed["spec"].closed is True
+    assert [c.document_id for c in closed["spec"].clashes] == ["adr-cart-price.md"]
+    assert [c.document_id for c in closed["spec"].context] == ["adr-cart-price.md"]

@@ -14,7 +14,7 @@ Usage:
 
 Scenarios (S1-S5 mandatory, S6 bonus):
     S1  GET /health + POST /threads        -> 200, valid Pydantic response
-    S2  Golden question #1 (new thread)    -> 200, spec.choques has citations
+    S2  Golden question #1 (new thread)    -> 200, spec.clashes has citations
     S3  Golden question #2 (new thread)    -> 200, citations, different thread
     S4  Follow-up on the SAME thread       -> 200, checkpointer kept state
     S5  Malformed payload (no "ticket")    -> 422, Pydantic error detail
@@ -103,29 +103,29 @@ def sc1_health_and_thread_start(client: httpx.Client, ctx: dict) -> str:
     )
     spec = body.get("spec")
     _require(isinstance(spec, dict), f"POST /threads response missing spec: {body}")
-    _require(spec.get("pedido") == ticket, f"spec.pedido != ticket: {spec.get('pedido')!r}")
-    estado = spec.get("estado") or {}
+    _require(spec.get("request") == ticket, f"spec.request != ticket: {spec.get('request')!r}")
+    status = spec.get("status") or {}
     _require(
-        isinstance(estado.get("razon"), str) and bool(estado["razon"]),
-        f"spec.estado.razon missing: {estado}",
+        isinstance(status.get("reason"), str) and bool(status["reason"]),
+        f"spec.status.reason missing: {status}",
     )
     ctx["thread_id"] = thread_id
-    return f"health ok (graph={ctx['graph_mode']}); thread {thread_id[:8]}…; spec.pedido == ticket"
+    return f"health ok (graph={ctx['graph_mode']}); thread {thread_id[:8]}…; spec.request == ticket"
 
 
 def _assert_citations(spec: dict, where: str) -> list[str]:
     """A corpus-grounded turn must show evidence: real clashes OR context.
 
     Live S3 ("¿Cuándo se reserva el stock?") is context, not a clash; requiring
-    only `choques` would force undeclared documents back into the clash bucket.
+    only `clashes` would force undeclared documents back into the clash bucket.
     """
-    choques = spec.get("choques")
-    contexto = spec.get("contexto")
+    clashes = spec.get("clashes")
+    context = spec.get("context")
     _require(
-        isinstance(choques, list) and isinstance(contexto, list),
-        f"{where}: spec.choques/contexto missing or not a list: {spec}",
+        isinstance(clashes, list) and isinstance(context, list),
+        f"{where}: spec.clashes/context missing or not a list: {spec}",
     )
-    retrieved = choques + contexto
+    retrieved = clashes + context
     _require(
         len(retrieved) > 0,
         f"{where}: no citations returned for a corpus-grounded question",
@@ -183,17 +183,17 @@ def sc4_multiturn_continuity(client: httpx.Client, ctx: dict) -> str:
     )
     spec = r.json().get("spec") or {}
     _require(
-        spec.get("pedido") == ticket,
-        f"continuity broken: spec.pedido changed to {spec.get('pedido')!r}",
+        spec.get("request") == ticket,
+        f"continuity broken: spec.request changed to {spec.get('request')!r}",
     )
-    estado = spec.get("estado") or {}
+    status = spec.get("status") or {}
     _require(
-        isinstance(estado.get("razon"), str) and bool(estado["razon"]),
-        f"second response has no estado.razon: {estado}",
+        isinstance(status.get("reason"), str) and bool(status["reason"]),
+        f"second response has no status.reason: {status}",
     )
     return (
         f"same thread {thread_id[:8]}… accepted a follow-up (marker qa:{marker}); "
-        "spec.pedido still the original ticket → checkpointer kept state"
+        "spec.request still the original ticket → checkpointer kept state"
     )
 
 
@@ -226,14 +226,14 @@ def sc6_close_thread(client: httpx.Client, ctx: dict) -> str:
     detail = "close accepted (200); final spec returned"
     if ctx.get("graph_mode") == "fake":
         _require(
-            spec.get("preguntas") == [],
-            f"fake graph should clear preguntas on close, got {spec.get('preguntas')!r}",
+            spec.get("questions") == [],
+            f"fake graph should clear questions on close, got {spec.get('questions')!r}",
         )
         _require(
-            (spec.get("estado") or {}).get("se_puede_cerrar") is True,
-            "fake graph should mark se_puede_cerrar=True after close",
+            (spec.get("status") or {}).get("can_close") is True,
+            "fake graph should mark can_close=True after close",
         )
-        detail += "; preguntas cleared and se_puede_cerrar=True"
+        detail += "; questions cleared and can_close=True"
     return detail
 
 
@@ -268,8 +268,8 @@ class TraceReport:
 
 
 def load_golden(path: Path = GOLDEN_PATH, needed: int = 2) -> list[tuple[str, str]]:
-    data = json.loads(Path(path).read_text(encoding="utf-8"))["casos"]
-    cases = [(c["pregunta"], c["documento_id_esperado"]) for c in data]
+    data = json.loads(Path(path).read_text(encoding="utf-8"))["cases"]
+    cases = [(c["question"], c["expected_document_id"]) for c in data]
     if len(cases) < needed:
         raise ValueError(f"golden_set.json needs at least {needed} cases, found {len(cases)}")
     return cases

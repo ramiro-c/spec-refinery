@@ -16,17 +16,17 @@ class DocumentAssessment(BaseModel):
     """The interrogator's per-document verdict for one retrieved rule."""
 
     document_id: str
-    tipo: Literal["choque", "contexto"]
+    kind: Literal["clash", "context"]
 
 class AcceptanceCriterion(BaseModel):
-    dado: str = ""
-    cuando: str = ""
-    entonces: str = ""
+    given: str = ""
+    when: str = ""
+    then: str = ""
 
 class SpecStatus(BaseModel):
-    se_puede_cerrar: bool
-    vaguedad: int = Field(ge=0, le=10)
-    razon: str
+    can_close: bool
+    vagueness: int = Field(ge=0, le=10)
+    reason: str
 
 
 class Interrogation(BaseModel):
@@ -44,7 +44,7 @@ class Interrogation(BaseModel):
             "closing something (a price closing in the cart) is not a request."
         ),
     )
-    decisiones: list[Decision] = Field(
+    decisions: list[Decision] = Field(
         default_factory=list,
         description=(
             "Arguments the PM settled in this round, including any company "
@@ -52,7 +52,7 @@ class Interrogation(BaseModel):
             "and stop asking about it."
         ),
     )
-    preguntas: list[str] = Field(
+    questions: list[str] = Field(
         default_factory=list,
         description=(
             "Open questions for the PM. Ask as many as this request genuinely "
@@ -60,23 +60,23 @@ class Interrogation(BaseModel):
             "settle."
         ),
     )
-    se_puede_cerrar: bool = Field(
+    can_close: bool = Field(
         description=(
             "True only when an engineer could implement this and a tester could "
             "write the acceptance criteria without asking anything else."
         )
     )
-    vaguedad: int = Field(
+    vagueness: int = Field(
         ge=0,
         le=10,
         description="0 when nothing is left to clarify, 10 for a one-line wish.",
     )
-    razon: str = Field(description="Why, in one sentence, in Spanish.")
-    clasificaciones: list[DocumentAssessment] = Field(
+    reason: str = Field(description="Why, in one sentence, in Spanish.")
+    classifications: list[DocumentAssessment] = Field(
         default_factory=list,
         description=(
-            "One entry per document retrieved this turn: \"choque\" when the "
-            "request genuinely contradicts that rule, \"contexto\" when the "
+            "One entry per document retrieved this turn: \"clash\" when the "
+            "request genuinely contradicts that rule, \"context\" when the "
             "document informs the request without being contradicted."
         ),
     )
@@ -90,9 +90,9 @@ class Decision(BaseModel):
     goes, it stops being an open question and becomes part of the spec.
     """
 
-    tema: str = Field(description="What was being argued, in a few words.")
+    topic: str = Field(description="What was being argued, in a few words.")
     decision: str = Field(description="What the PM decided.")
-    impacto: str = Field(
+    impact: str = Field(
         default="",
         description=(
             "What this costs: rules to rewrite, services to touch, risks taken."
@@ -101,13 +101,13 @@ class Decision(BaseModel):
 
 
 class SpecDocument(BaseModel):
-    pedido: str
-    que_entendimos: str = ""
-    choques: list[Citation] = Field(default_factory=list)
-    contexto: list[Citation] = Field(default_factory=list)
-    decisiones: list[Decision] = Field(default_factory=list)
-    servicios: list[str] = Field(default_factory=list)
-    criterios: list[AcceptanceCriterion] = Field(default_factory=list)
-    preguntas: list[str] = Field(default_factory=list)
-    estado: SpecStatus
-    cerrada: bool = False
+    request: str
+    understanding: str = ""
+    clashes: list[Citation] = Field(default_factory=list)
+    context: list[Citation] = Field(default_factory=list)
+    decisions: list[Decision] = Field(default_factory=list)
+    services: list[str] = Field(default_factory=list)
+    criteria: list[AcceptanceCriterion] = Field(default_factory=list)
+    questions: list[str] = Field(default_factory=list)
+    status: SpecStatus
+    closed: bool = False

@@ -15,10 +15,10 @@ class RefineryState(MessagesState):
     questions: list[str]
     # Settled this round; the writer folds them into the spec, which is what
     # persists and what the interrogator reads back as "do not re-open".
-    decisiones: list[Decision]
+    decisions: list[Decision]
     # The interrogator's per-document verdict for this turn; the writer
-    # intersects it with the citations to derive real choques.
-    clasificaciones: list[DocumentAssessment]
+    # intersects it with the citations to derive real clashes.
+    classifications: list[DocumentAssessment]
     # The interrogator's verdict for this thread; the writer copies it into the
     # spec instead of recomputing a score of its own.
     assessment: SpecStatus | None
@@ -35,8 +35,8 @@ class RefineryState(MessagesState):
 
 def empty_spec(ticket: str) -> SpecDocument:
     return SpecDocument(
-        pedido=ticket,
-        estado=SpecStatus(se_puede_cerrar=False, vaguedad=0, razon="inicio"),
+        request=ticket,
+        status=SpecStatus(can_close=False, vagueness=0, reason="inicio"),
     )
 
 
@@ -45,8 +45,8 @@ def initial_fields(ticket: str, *, close_requested: bool = False) -> dict:
         "next_agent": "FINISH",
         "citations": [],
         "questions": [],
-        "decisiones": [],
-        "clasificaciones": [],
+        "decisions": [],
+        "classifications": [],
         "assessment": None,
         "grilled": False,
         "round_count": 0,

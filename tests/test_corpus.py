@@ -17,7 +17,7 @@ def test_catalog_lists_every_service_id():
     for sid in SERVICE_IDS:
         assert sid in text
 
-def test_glossary_scopes_comprar_ahora_to_the_view_only():
+def test_glossary_scopes_buy_now_to_the_view_only():
     text = (CORPUS / "glossary.md").read_text()
     entry = next(line for line in text.splitlines() if "Comprar ahora" in line)
     assert "no reemplaza el cierre de precio" in entry

@@ -18,15 +18,15 @@ from retriever import COLLECTION_NAME, load_corpus_documents
 
 def ingest_chroma() -> None:
     """Index the corpus into local Chroma."""
-    documentos = load_corpus_documents()
+    documents = load_corpus_documents()
     CHROMA_DIR.mkdir(parents=True, exist_ok=True)
     Chroma.from_documents(
-        documents=documentos,
+        documents=documents,
         embedding=get_embeddings(),
         persist_directory=str(CHROMA_DIR),
         collection_name=COLLECTION_NAME,
     )
-    print(f"[ingest] Chroma: {len(documentos)} documents in {CHROMA_DIR}")
+    print(f"[ingest] Chroma: {len(documents)} documents in {CHROMA_DIR}")
 
 
 def main() -> None:

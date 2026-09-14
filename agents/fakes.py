@@ -50,13 +50,13 @@ def fake_intake(state: RefineryState) -> dict:
     return {
         "questions": list(FAKE_QUESTIONS),
         "assessment": SpecStatus(
-            se_puede_cerrar=False,
-            vaguedad=5,
-            razon="grafo fake (QA, sin LLM)",
+            can_close=False,
+            vagueness=5,
+            reason="grafo fake (QA, sin LLM)",
         ),
         "grilled": True,
-        "clasificaciones": [
-            DocumentAssessment(document_id="adr-cart-price.md", tipo="choque")
+        "classifications": [
+            DocumentAssessment(document_id="adr-cart-price.md", kind="clash")
         ],
         "messages": [AIMessage(content="\n".join(FAKE_QUESTIONS), name="intake")],
         "last_agent": "intake",
@@ -64,26 +64,26 @@ def fake_intake(state: RefineryState) -> dict:
 
 
 def fake_writer(state: RefineryState) -> dict:
-    from agents.writer import _is_frozen, resolve_choques_y_contexto
+    from agents.writer import _is_frozen, resolve_clashes_and_context
 
     spec = state["spec"]
     ticket = state.get("ticket") or ""
     close_requested = bool(state.get("close_requested"))
-    spec.pedido = ticket
-    spec.que_entendimos = (
+    spec.request = ticket
+    spec.understanding = (
         "Checkout «comprar ahora» que no pasa por el carrito (demo QA)."
         if ticket
-        else spec.que_entendimos
+        else spec.understanding
     )
-    spec.preguntas = [] if close_requested else list(state.get("questions") or [])
-    spec.choques, spec.contexto = resolve_choques_y_contexto(state)
+    spec.questions = [] if close_requested else list(state.get("questions") or [])
+    spec.clashes, spec.context = resolve_clashes_and_context(state)
     assessment = state.get("assessment")
     if assessment is not None:
-        spec.estado = assessment.model_copy()
-    spec.estado.razon = "grafo fake (QA, sin LLM)"
+        spec.status = assessment.model_copy()
+    spec.status.reason = "grafo fake (QA, sin LLM)"
     if close_requested:
         # QA closes the thread and expects a clean, closable document.
-        spec.estado.se_puede_cerrar = True
-        spec.estado.vaguedad = 0
-    spec.cerrada = _is_frozen(state)
+        spec.status.can_close = True
+        spec.status.vagueness = 0
+    spec.closed = _is_frozen(state)
     return {"spec": spec, "last_agent": "writer"}

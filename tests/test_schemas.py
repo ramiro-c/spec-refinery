@@ -13,88 +13,88 @@ from schemas import (
 
 def test_spec_document_roundtrip_empty_boxes():
     spec = SpecDocument(
-        pedido="ticket",
-        que_entendimos="",
-        choques=[],
-        servicios=[],
-        criterios=[],
-        preguntas=[],
-        estado=SpecStatus(se_puede_cerrar=False, vaguedad=0, razon="inicio"),
+        request="ticket",
+        understanding="",
+        clashes=[],
+        services=[],
+        criteria=[],
+        questions=[],
+        status=SpecStatus(can_close=False, vagueness=0, reason="inicio"),
     )
     dumped = spec.model_dump()
-    assert dumped["pedido"] == "ticket"
-    assert dumped["preguntas"] == []
+    assert dumped["request"] == "ticket"
+    assert dumped["questions"] == []
     again = SpecDocument.model_validate(dumped)
-    assert again.estado.se_puede_cerrar is False
+    assert again.status.can_close is False
 
 
-def test_spec_document_missing_cerrada_defaults_to_false():
-    """Schema default: a dict without `cerrada` validates as an open spec.
+def test_spec_document_missing_closed_defaults_to_false():
+    """Schema default: a dict without `closed` validates as an open spec.
 
     This exercises ``model_validate`` on an in-memory dict only; it does NOT
     run the LangGraph checkpoint codec.
     """
     spec = SpecDocument(
-        pedido="ticket",
-        estado=SpecStatus(se_puede_cerrar=False, vaguedad=0, razon="inicio"),
+        request="ticket",
+        status=SpecStatus(can_close=False, vagueness=0, reason="inicio"),
     )
-    assert spec.cerrada is False
+    assert spec.closed is False
 
     dumped = spec.model_dump()
-    del dumped["cerrada"]
+    del dumped["closed"]
     revived = SpecDocument.model_validate(dumped)
-    assert revived.cerrada is False
+    assert revived.closed is False
 
 
-def test_spec_document_contexto_defaults_to_empty():
-    """`contexto` is independent from `choques` and round-trips its own data."""
+def test_spec_document_context_defaults_to_empty():
+    """`context` is independent from `clashes` and round-trips its own data."""
     spec = SpecDocument(
-        pedido="ticket",
-        choques=[Citation(document_id="adr-cart-price.md", title="precio")],
-        estado=SpecStatus(se_puede_cerrar=False, vaguedad=0, razon="inicio"),
+        request="ticket",
+        clashes=[Citation(document_id="adr-cart-price.md", title="precio")],
+        status=SpecStatus(can_close=False, vagueness=0, reason="inicio"),
     )
-    assert spec.contexto == []
+    assert spec.context == []
 
-    spec.contexto = [Citation(document_id="adr-stock-reserve.md", title="stock")]
+    spec.context = [Citation(document_id="adr-stock-reserve.md", title="stock")]
     dumped = spec.model_dump()
-    assert dumped["contexto"][0]["document_id"] == "adr-stock-reserve.md"
+    assert dumped["context"][0]["document_id"] == "adr-stock-reserve.md"
     revived = SpecDocument.model_validate(dumped)
-    assert revived.contexto[0].document_id == "adr-stock-reserve.md"
-    assert revived.choques[0].document_id == "adr-cart-price.md"
+    assert revived.context[0].document_id == "adr-stock-reserve.md"
+    assert revived.clashes[0].document_id == "adr-cart-price.md"
 
 
-def test_spec_document_revives_dump_without_contexto():
-    """Backward compatibility: an old dump lacking `contexto` still revives."""
+def test_spec_document_revives_dump_without_context():
+    """Backward compatibility: an old dump lacking `context` still revives."""
     spec = SpecDocument(
-        pedido="ticket",
-        estado=SpecStatus(se_puede_cerrar=False, vaguedad=0, razon="inicio"),
+        request="ticket",
+        status=SpecStatus(can_close=False, vagueness=0, reason="inicio"),
     )
     dumped = spec.model_dump()
-    del dumped["contexto"]
+    del dumped["context"]
     revived = SpecDocument.model_validate(dumped)
-    assert revived.contexto == []
+    assert revived.context == []
 
 
-def test_interrogation_clasificaciones_defaults_to_empty():
+def test_interrogation_classifications_defaults_to_empty():
     """Declarations are optional, and the close flag stays at index 0."""
     verdict = Interrogation(
-        se_puede_cerrar=False,
-        vaguedad=0,
-        razon="inicio",
-        clasificaciones=[
-            DocumentAssessment(document_id="adr-cart-price.md", tipo="choque")
+        can_close=False,
+        vagueness=0,
+        reason="inicio",
+        classifications=[
+            DocumentAssessment(document_id="adr-cart-price.md", kind="clash")
         ],
     )
-    assert [(c.document_id, c.tipo) for c in verdict.clasificaciones] == [
-        ("adr-cart-price.md", "choque")
+    assert [(c.document_id, c.kind) for c in verdict.classifications] == [
+        ("adr-cart-price.md", "clash")
     ]
     assert list(Interrogation.model_fields)[0] == "human_wants_close"
-    bare = Interrogation(se_puede_cerrar=False, vaguedad=0, razon="x")
-    assert bare.clasificaciones == []
+    bare = Interrogation(can_close=False, vagueness=0, reason="x")
+    assert bare.classifications == []
 
 
-def test_document_assessment_rejects_unknown_tipo():
-    assert DocumentAssessment(document_id="x", tipo="contexto").tipo == "contexto"
-    assert DocumentAssessment(document_id="x", tipo="choque").tipo == "choque"
+def test_document_assessment_rejects_unknown_kind():
+    assert DocumentAssessment(document_id="x", kind="context").kind == "context"
+    assert DocumentAssessment(document_id="x", kind="clash").kind == "clash"
     with pytest.raises(ValidationError):
-        DocumentAssessment(document_id="x", tipo="ni-idea")
+        DocumentAssessment(document_id="x", kind="ni-idea")

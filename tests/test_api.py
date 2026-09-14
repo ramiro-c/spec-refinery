@@ -48,15 +48,15 @@ def test_start_continue_close_and_unknown_thread(client: TestClient):
     assert r.status_code == 200
     thread_id = r.json()["thread_id"]
     spec = r.json()["spec"]
-    assert spec["pedido"] == CYBER_TICKET
-    assert len(spec["preguntas"]) == 3
+    assert spec["request"] == CYBER_TICKET
+    assert len(spec["questions"]) == 3
 
     r2 = client.post(f"/threads/{thread_id}/messages", json={"content": "para todo, no medimos"})
     assert r2.status_code == 200
 
     r3 = client.post(f"/threads/{thread_id}/close")
     assert r3.status_code == 200
-    assert r3.json()["spec"]["preguntas"] == []
+    assert r3.json()["spec"]["questions"] == []
 
     missing = client.post("/threads/does-not-exist/messages", json={"content": "hola"})
     assert missing.status_code == 404
@@ -76,7 +76,7 @@ def test_a_plain_answer_keeps_the_thread_open(client: TestClient):
         json={"content": "todavía no cierres, falta definir el alcance"},
     ).json()["spec"]
 
-    assert spec["preguntas"]
+    assert spec["questions"]
 
 
 def test_close_reports_the_last_verdict(client: TestClient):
@@ -85,5 +85,5 @@ def test_close_reports_the_last_verdict(client: TestClient):
 
     spec = client.post(f"/threads/{thread_id}/close").json()["spec"]
 
-    assert spec["preguntas"] == []
-    assert "vaguedad" in spec["estado"]
+    assert spec["questions"] == []
+    assert "vagueness" in spec["status"]

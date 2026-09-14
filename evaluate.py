@@ -13,26 +13,26 @@ from config import TOP_K
 from retriever import retrieve
 
 GOLDEN_PATH = Path(__file__).resolve().parent / "golden_set.json"
-UMBRAL_ACIERTOS = 4
+HIT_THRESHOLD = 4
 
 
 def evaluate_golden() -> bool:
     """Corre el golden set y devuelve True si Recall@5 ≥ 4/5."""
-    datos = json.loads(GOLDEN_PATH.read_text(encoding="utf-8"))
-    aciertos = 0
+    data = json.loads(GOLDEN_PATH.read_text(encoding="utf-8"))
+    hits = 0
     print(f"{'Pregunta':<55} {'Esperado':<28} {'Hit':>5}")
     print("-" * 92)
-    for caso in datos["casos"]:
-        pregunta = caso["pregunta"]
-        esperado = caso["documento_id_esperado"]
-        ids = [c.document_id for c in retrieve(pregunta)[:TOP_K]]
-        hit = esperado in ids
-        aciertos += int(hit)
-        marca = "✓" if hit else "✗"
-        print(f"{pregunta[:54]:<55} {esperado:<28} {marca:>5}")
+    for case in data["cases"]:
+        question = case["question"]
+        expected = case["expected_document_id"]
+        ids = [c.document_id for c in retrieve(question)[:TOP_K]]
+        hit = expected in ids
+        hits += int(hit)
+        mark = "✓" if hit else "✗"
+        print(f"{question[:54]:<55} {expected:<28} {mark:>5}")
     print("-" * 92)
-    print(f"Recall@{TOP_K}: {aciertos}/{len(datos['casos'])}")
-    return aciertos >= UMBRAL_ACIERTOS
+    print(f"Recall@{TOP_K}: {hits}/{len(data['cases'])}")
+    return hits >= HIT_THRESHOLD
 
 
 def main() -> None:

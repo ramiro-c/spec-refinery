@@ -12,29 +12,29 @@ from schemas import Citation, Decision, SpecDocument, SpecStatus
 from state import RefineryState, empty_spec
 
 WRITER_PROMPT = """You are the spec writer of the refinery.
-Rewrite que_entendimos, criterios and servicios from the ticket, the
+Rewrite understanding, criteria and services from the ticket, the
 conversation, the previous spec and the citations. Do not invent rules that
-are not in the citations, and pick servicios only from the catalog you are
+are not in the citations, and pick services only from the catalog you are
 given. Reflect the decisions the PM already took, including rules they chose
-to change. Pedido, choques, decisiones, preguntas and estado are fixed by the
+to change. Request, clashes, decisions, questions and status are fixed by the
 system.
 """
 
 _UNSCORED = SpecStatus(
-    se_puede_cerrar=False,
-    vaguedad=10,
-    razon="Todavía no evalué el pedido.",
+    can_close=False,
+    vagueness=10,
+    reason="Todavía no evalué el pedido.",
 )
 
 
 def _merge_decisions(state: RefineryState) -> list[Decision]:
     """Decisions accumulate over the thread; the last word on a topic wins."""
     prior = state.get("spec")
-    merged: list[Decision] = list(prior.decisiones) if prior is not None else []
-    for fresh in state.get("decisiones") or []:
-        key = fresh.tema.strip().lower()
+    merged: list[Decision] = list(prior.decisions) if prior is not None else []
+    for fresh in state.get("decisions") or []:
+        key = fresh.topic.strip().lower()
         for index, existing in enumerate(merged):
-            if existing.tema.strip().lower() == key:
+            if existing.topic.strip().lower() == key:
                 merged[index] = fresh
                 break
         else:
@@ -42,7 +42,7 @@ def _merge_decisions(state: RefineryState) -> list[Decision]:
     return merged
 
 
-def _merge_choques(prior: list[Citation], fresh: list[Citation]) -> list[Citation]:
+def _merge_clashes(prior: list[Citation], fresh: list[Citation]) -> list[Citation]:
     """Real clashes accumulate over the thread; a redeclared id wins in place."""
     merged: list[Citation] = list(prior)
     for citation in fresh:
@@ -55,7 +55,7 @@ def _merge_choques(prior: list[Citation], fresh: list[Citation]) -> list[Citatio
     return merged
 
 
-def resolve_choques_y_contexto(
+def resolve_clashes_and_context(
     state: RefineryState,
 ) -> tuple[list[Citation], list[Citation]]:
     """Derive real clashes and retrieved context from declared classifications.
@@ -66,17 +66,17 @@ def resolve_choques_y_contexto(
     """
     citations = list(state.get("citations") or [])
     declared = {
-        assessment.document_id: assessment.tipo
-        for assessment in (state.get("clasificaciones") or [])
+        assessment.document_id: assessment.kind
+        for assessment in (state.get("classifications") or [])
     }
     prior = state.get("spec")
-    real_now = [c for c in citations if declared.get(c.document_id) == "choque"]
-    choques = _merge_choques(list(prior.choques) if prior is not None else [], real_now)
+    real_now = [c for c in citations if declared.get(c.document_id) == "clash"]
+    clashes = _merge_clashes(list(prior.clashes) if prior is not None else [], real_now)
     if citations:
-        contexto = citations
+        context = citations
     else:
-        contexto = list(prior.contexto) if prior is not None else []
-    return choques, contexto
+        context = list(prior.context) if prior is not None else []
+    return clashes, context
 
 
 def _is_frozen(state: RefineryState) -> bool:
@@ -86,7 +86,7 @@ def _is_frozen(state: RefineryState) -> bool:
     ) >= MAX_ROUNDS
 
 
-def _estado(state: RefineryState, open_questions: int) -> SpecStatus:
+def _status(state: RefineryState, open_questions: int) -> SpecStatus:
     """The interrogator owns the verdict; the writer only carries it over.
 
     On an explicit close the interrogator does not run, so the last verdict
@@ -95,31 +95,31 @@ def _estado(state: RefineryState, open_questions: int) -> SpecStatus:
     assessment = state.get("assessment")
     if assessment is None:
         prior = state.get("spec")
-        if prior is not None and prior.estado is not None:
-            assessment = prior.estado
-    estado = (assessment or _UNSCORED).model_copy()
+        if prior is not None and prior.status is not None:
+            assessment = prior.status
+    status = (assessment or _UNSCORED).model_copy()
     if not _is_frozen(state):
-        return estado
+        return status
     # Closing is the human's call, and the round budget is a promise made to
     # them up front. Either way the spec closes; the status stays honest about
     # what was left open instead of refusing.
-    if estado.se_puede_cerrar:
-        estado.razon = "Cerrada sin puntos abiertos."
-        return estado
+    if status.can_close:
+        status.reason = "Cerrada sin puntos abiertos."
+        return status
     # The question count is zero on the last round (it asks nothing), so lead
     # with vagueness there instead of claiming nothing was left open.
-    pendiente = (
-        f"{open_questions} pregunta(s) sin responder · vaguedad {estado.vaguedad}"
+    pending = (
+        f"{open_questions} pregunta(s) sin responder · vaguedad {status.vagueness}"
         if open_questions
-        else f"vaguedad {estado.vaguedad}"
+        else f"vaguedad {status.vagueness}"
     )
     if state.get("close_requested"):
-        estado.razon = f"Cerrada a pedido tuyo, con {pendiente}."
+        status.reason = f"Cerrada a pedido tuyo, con {pending}."
     else:
-        estado.razon = (
-            f"Cerrada: se agotaron las {MAX_ROUNDS} rondas, con {pendiente}."
+        status.reason = (
+            f"Cerrada: se agotaron las {MAX_ROUNDS} rondas, con {pending}."
         )
-    return estado
+    return status
 
 
 async def writer_turn(state: RefineryState, llm: BaseChatModel) -> dict:
@@ -143,7 +143,7 @@ async def writer_turn(state: RefineryState, llm: BaseChatModel) -> dict:
                     f"Previous spec:\n{prior_text}\n"
                     f"Citations: {[c.document_id for c in citations]}\n"
                     f"Decisions already taken: "
-                    f"{[f'{d.tema}: {d.decision}' for d in _merge_decisions(state)]}\n"
+                    f"{[f'{d.topic}: {d.decision}' for d in _merge_decisions(state)]}\n"
                     f"Open questions: {questions}\n"
                     f"Service catalog: {', '.join(SERVICE_IDS)}"
                 )
@@ -151,13 +151,13 @@ async def writer_turn(state: RefineryState, llm: BaseChatModel) -> dict:
         ]
     )
     spec = draft
-    spec.pedido = ticket
-    spec.choques, spec.contexto = resolve_choques_y_contexto(state)
-    spec.preguntas = [] if _is_frozen(state) else list(questions)
-    spec.decisiones = _merge_decisions(state)
-    spec.servicios = [s for s in spec.servicios if s in SERVICE_IDS]
-    spec.estado = _estado(state, len(questions))
-    spec.cerrada = _is_frozen(state)
+    spec.request = ticket
+    spec.clashes, spec.context = resolve_clashes_and_context(state)
+    spec.questions = [] if _is_frozen(state) else list(questions)
+    spec.decisions = _merge_decisions(state)
+    spec.services = [s for s in spec.services if s in SERVICE_IDS]
+    spec.status = _status(state, len(questions))
+    spec.closed = _is_frozen(state)
 
     return {
         "spec": spec,
