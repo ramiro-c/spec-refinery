@@ -23,3 +23,19 @@ def test_resolver_falls_back_when_blank(monkeypatch, blank):
 def test_setup_tracing_does_not_raise_when_unset(monkeypatch):
     monkeypatch.delenv("PHOENIX_COLLECTOR_ENDPOINT", raising=False)
     setup_tracing()
+
+
+def test_setup_tracing_registers_with_batch_span_processor(monkeypatch):
+    phoenix_otel = pytest.importorskip("phoenix.otel")
+    pytest.importorskip("openinference.instrumentation.langchain")
+
+    calls = {}
+
+    def spy_register(**kwargs):
+        calls.update(kwargs)
+        return object()
+
+    monkeypatch.setattr(phoenix_otel, "register", spy_register)
+    setup_tracing()
+
+    assert calls.get("batch") is True

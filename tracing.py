@@ -21,5 +21,5 @@ def setup_tracing() -> None:
         from phoenix.otel import register
     except ImportError:
         return
-    register(project_name="spec-refinery", endpoint=endpoint)
+    register(project_name="spec-refinery", endpoint=endpoint, batch=True)
     LangChainInstrumentor().instrument()
