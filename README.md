@@ -8,7 +8,7 @@ Diagrama interactivo del grafo: [docs/grafo.html](docs/grafo.html) (generado con
 
 En la UI, el panel derecho separa **Choques reales** (`clashes`) de **Contexto recuperado** (`context`), y el botón **Usar el ticket de demo** siempre arranca un hilo nuevo.
 
-## Quick path (demo Cyber Monday)
+## Camino rápido (demo Cyber Monday)
 
 1. Pegá el ticket: *“Para el Cyber Monday queremos un checkout más rápido, tipo Amazon: que el comprar ahora no pase por el carrito.”*
 2. El interrogador cruza el pedido con el corpus. Antes de declarar una contradicción, interpreta los términos del pedido contra las definiciones recuperadas (glosario primero): «comprar ahora» sólo saltea la vista intermedia de carrito vacío, no el cierre de precio ni la reserva de stock. Si el glosario cubre el término y la contradicción se disuelve, **no hay choque real** — es un desenlace válido. Si la definición no alcanza, o el pedido igual saltea un paso obligatorio, el choque es real y te lo planta con el documento: sin carrito, ¿cuándo reserva stock `inventory-service` (`adr-stock-reserve.md`)? ¿Cómo confirma envío `shipping-service` (`adr-shipping-step.md`)?
@@ -40,7 +40,7 @@ docker compose up --build
 - API: http://127.0.0.1:8000/health
 - UI: http://127.0.0.1:8501
 - Phoenix: http://127.0.0.1:6010
-- `docker compose` levanta Phoenix + api + ui, pero el servicio `api` corre con `SPEC_REFINERY_GRAPH=fake`: preguntas canned con nodos dummy, **sin LLM ni embeddings**, para ejercitar el contrato de la API sin credenciales. Para Vertex/OpenRouter: `SPEC_REFINERY_GRAPH=live` y un `.env` con las keys.
+- `docker compose` levanta Phoenix + api + ui, pero el servicio `api` corre con `SPEC_REFINERY_GRAPH=fake`: preguntas predefinidas con nodos dummy, **sin LLM ni embeddings**, para ejercitar el contrato de la API sin credenciales. Para Vertex/OpenRouter: `SPEC_REFINERY_GRAPH=live` y un `.env` con las keys.
 
 Variables útiles:
 
@@ -113,7 +113,7 @@ export PHOENIX_COLLECTOR_ENDPOINT=http://127.0.0.1:6006/v1/traces
 ./run.sh
 ```
 
-Corré el quick path (ticket Cyber Monday → responder → cerrar) y filtrá por `spec-refinery` en la UI; exportá las trazas desde el menú **Export**.
+Corré el camino rápido (ticket Cyber Monday → responder → cerrar) y filtrá por `spec-refinery` en la UI; exportá las trazas desde el menú **Export**.
 
 Alternativa: [LangSmith](https://smith.langchain.com/) con `LANGCHAIN_TRACING_V2=true` y `LANGCHAIN_API_KEY`.
 
@@ -138,38 +138,38 @@ La suite actual: **106 passed, 0 warnings**. Los tests de API y de `qa_system`
 manejan la app con `httpx.ASGITransport`, y
 `qa_system.py` es async (corre con `asyncio.run`).
 
-## System evidence tests
+## Tests de evidencia del sistema
 
-`qa_system.py` runs 6 end-to-end scenarios against the live API and verifies
-that each one produced traces in Arize Phoenix (rubric evidence: 5+ system
-tests with traces visible in Phoenix or LangSmith).
+`qa_system.py` corre 6 escenarios end-to-end contra la API en vivo y verifica
+que cada uno haya producido trazas en Arize Phoenix (evidencia de la rúbrica: 5+
+tests de sistema con trazas visibles en Phoenix o LangSmith).
 
 ```bash
-docker compose up -d          # or: ./run.sh (API on :8000)
+docker compose up -d          # o: ./run.sh (API en :8000)
 .venv/bin/python qa_system.py --base-url http://127.0.0.1:8000 --phoenix-url http://localhost:6010
 ```
 
-What it proves:
+Qué prueba:
 
-- **S1** `GET /health` + `POST /threads` → 200 with a valid Pydantic response.
-- **S2** Golden question #1 (from `golden_set.json`) in a new thread → 200 and
-   retrieved evidence (`spec.clashes` reales y/o `spec.context`) with
+- **S1** `GET /health` + `POST /threads` → 200 con una respuesta Pydantic válida.
+- **S2** Pregunta golden #1 (de `golden_set.json`) en un hilo nuevo → 200 y
+   evidencia recuperada (`spec.clashes` reales y/o `spec.context`) con
   `document_id`.
-- **S3** Golden question #2 in a **different** new thread → same retrieval path.
-- **S4** Follow-up message on the **same** thread → 200 with `spec.request`
-  unchanged → the checkpointer kept state (multi-turn continuity).
-- **S5** Malformed payload (`POST /threads` without `ticket`) → 422 with a
-  Pydantic error detail.
-- **S6** (bonus) `POST /threads/{id}/close` → 200; the spec reflects closure.
+- **S3** Pregunta golden #2 en un hilo nuevo **distinto** → el mismo camino de recuperación.
+- **S4** Mensaje de seguimiento en el **mismo** hilo → 200 con `spec.request`
+  sin cambios → el checkpointer mantuvo el estado (continuidad multi-turno).
+- **S5** Payload malformado (`POST /threads` sin `ticket`) → 422 con un
+  detalle de error de Pydantic.
+- **S6** (bonus) `POST /threads/{id}/close` → 200; la spec refleja el cierre.
 
-Trace verification: after the scenarios, the script queries Phoenix
-(`QA_PHOENIX_URL`, default `http://localhost:6010` — the compose mapping) for
-spans inside each scenario's execution window and prints per-scenario span
-counts/names. It exits 0 only if all 5 mandatory scenarios pass **and** the
-trace check passes. Fallbacks (never fabricated as a pass): Phoenix
-unreachable or missing → `SKIP`; LangSmith tracing active
-(`LANGCHAIN_TRACING_V2`/`LANGSMITH_TRACING`) → Phoenix check `N/A`, traces
-land in LangSmith. CLI real (`python qa_system.py --help`): `--base-url`
+Verificación de trazas: después de los escenarios, el script consulta Phoenix
+(`QA_PHOENIX_URL`, default `http://localhost:6010` — el mapeo del compose) por
+spans dentro de la ventana de ejecución de cada escenario e imprime conteos/nombres
+de spans por escenario. Sale con 0 sólo si pasan los 5 escenarios obligatorios **y**
+pasa el chequeo de trazas. Fallbacks (nunca fabricados como un pass): Phoenix
+inalcanzable o ausente → `SKIP`; tracing de LangSmith activo
+(`LANGCHAIN_TRACING_V2`/`LANGSMITH_TRACING`) → chequeo de Phoenix `N/A`, las trazas
+quedan en LangSmith. CLI real (`python qa_system.py --help`): `--base-url`
 (API, o `QA_BASE_URL`), `--phoenix-url` (Phoenix, o `QA_PHOENIX_URL`; standalone
 `phoenix serve` usa `:6006`), `--trace-wait` (segundos a esperar spans, default
 60), `--skip-traces` (escenarios sin chequeo de trazas) y `--selftest` (corre
