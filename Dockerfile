@@ -2,6 +2,10 @@ FROM python:3.12-slim
 
 WORKDIR /app
 
+# CPU-only torch: sentence-transformers never uses CUDA here, and the default
+# wheel drags in multi-GB NVIDIA runtime libraries the container cannot use.
+RUN pip install --no-cache-dir --index-url https://download.pytorch.org/whl/cpu torch
+
 COPY requirements-compose.txt .
 RUN pip install --no-cache-dir -r requirements-compose.txt
 
