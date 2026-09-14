@@ -108,7 +108,6 @@ async def run_turn(
         # Continuation: do not overwrite the checkpointed spec or other fields.
         inputs = {
             "messages": messages,
-            "close_requested": close_requested,
             "ticket": ticket,
             "citations": [],
             "questions": [],
@@ -119,6 +118,12 @@ async def run_turn(
             "step_count": 0,
             "last_error": "",
         }
+        # Closure is sticky: only an explicit close request may set it. On every
+        # other turn the key is omitted so the checkpointed value survives;
+        # resetting it to False here would reopen a thread closed by an earlier
+        # /close. An open thread already persists False, so this is a no-op there.
+        if close_requested:
+            inputs["close_requested"] = True
     else:
         inputs = {**initial_fields(ticket, close_requested=close_requested), "messages": messages}
 

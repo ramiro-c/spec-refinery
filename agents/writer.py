@@ -120,6 +120,7 @@ async def writer_turn(state: RefineryState, llm: BaseChatModel) -> dict:
     spec.decisiones = _merge_decisions(state)
     spec.servicios = [s for s in spec.servicios if s in SERVICE_IDS]
     spec.estado = _estado(state, len(questions))
+    spec.cerrada = _is_frozen(state)
 
     return {
         "spec": spec,

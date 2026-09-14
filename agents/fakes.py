@@ -61,6 +61,8 @@ def fake_intake(state: RefineryState) -> dict:
 
 
 def fake_writer(state: RefineryState) -> dict:
+    from agents.writer import _is_frozen
+
     spec = state["spec"]
     ticket = state.get("ticket") or ""
     close_requested = bool(state.get("close_requested"))
@@ -80,4 +82,5 @@ def fake_writer(state: RefineryState) -> dict:
         # QA closes the thread and expects a clean, closable document.
         spec.estado.se_puede_cerrar = True
         spec.estado.vaguedad = 0
+    spec.cerrada = _is_frozen(state)
     return {"spec": spec, "last_agent": "writer"}

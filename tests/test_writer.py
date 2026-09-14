@@ -236,6 +236,67 @@ async def test_writer_lets_a_new_decision_supersede_the_same_topic():
     assert out["spec"].decisiones[0].decision == "solo SKU 1P de electro"
 
 
+async def test_writer_flags_a_closed_spec():
+    """A close request marks the document so the UI can hide the close controls."""
+    modelo = _modelo_llm_fake(
+        {
+            "pedido": "x",
+            "que_entendimos": "Cierre.",
+            "criterios": [],
+            "preguntas": ["ignorada"],
+            "estado": {"se_puede_cerrar": True, "vaguedad": 0, "razon": "llm"},
+        }
+    )
+    state = {
+        **initial_fields(CYBER_TICKET, close_requested=True),
+        "spec": empty_spec(CYBER_TICKET),
+    }
+    out = await writer_turn(state, modelo)
+
+    assert out["spec"].cerrada is True
+
+
+async def test_writer_does_not_flag_an_open_spec():
+    modelo = _modelo_llm_fake(
+        {
+            "pedido": "x",
+            "que_entendimos": "Sigue abierta.",
+            "criterios": [],
+            "preguntas": ["¿medimos?"],
+            "estado": {"se_puede_cerrar": False, "vaguedad": 3, "razon": "llm"},
+        }
+    )
+    state = {
+        **initial_fields(CYBER_TICKET),
+        "questions": ["¿medimos?"],
+        "round_count": MAX_ROUNDS - 1,
+    }
+    out = await writer_turn(state, modelo)
+
+    assert out["spec"].cerrada is False
+
+
+async def test_writer_flags_a_spec_closed_by_round_budget():
+    """Out of rounds means frozen, even without an explicit close."""
+    modelo = _modelo_llm_fake(
+        {
+            "pedido": "x",
+            "que_entendimos": "Se agotaron las rondas.",
+            "criterios": [],
+            "preguntas": [],
+            "estado": {"se_puede_cerrar": False, "vaguedad": 4, "razon": "llm"},
+        }
+    )
+    state = {
+        **initial_fields(CYBER_TICKET),
+        "questions": ["¿Y el stock?"],
+        "round_count": MAX_ROUNDS,
+    }
+    out = await writer_turn(state, modelo)
+
+    assert out["spec"].cerrada is True
+
+
 async def test_writer_freezes_the_spec_when_the_rounds_run_out():
     """The round budget is a promise to the PM: it closes on its own."""
     modelo = _modelo_llm_fake(

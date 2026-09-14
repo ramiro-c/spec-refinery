@@ -73,6 +73,11 @@ def _closing_reply(spec: dict) -> str:
     )
 
 
+def _spec_esta_abierta(spec: dict | None) -> bool:
+    """La spec sigue abierta mientras no esté marcada como cerrada."""
+    return not bool((spec or {}).get("cerrada"))
+
+
 def _absorb(payload: dict) -> None:
     """Guarda spec y presupuesto de rondas que devolvió el API."""
     st.session_state.spec = payload["spec"]
@@ -323,7 +328,7 @@ def main() -> None:
                     with st.chat_message(role):
                         st.write(text)
 
-        if st.session_state.thread_id:
+        if st.session_state.thread_id and _spec_esta_abierta(st.session_state.spec):
             st.caption(
                 "Para cerrar: tocá el botón o escribilo en el chat "
                 "(«cerrá la spec»)."

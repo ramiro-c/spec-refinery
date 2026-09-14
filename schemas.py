@@ -95,3 +95,4 @@ class SpecDocument(BaseModel):
     criterios: list[AcceptanceCriterion] = Field(default_factory=list)
     preguntas: list[str] = Field(default_factory=list)
     estado: SpecStatus
+    cerrada: bool = False
