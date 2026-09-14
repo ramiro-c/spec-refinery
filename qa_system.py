@@ -27,6 +27,7 @@ passes (trace check SKIP/N/A does not block; it never fabricates a pass).
 from __future__ import annotations
 
 import argparse
+import asyncio
 import datetime as dt
 import json
 import os
@@ -85,15 +86,15 @@ def _qa_ticket() -> str:
 # --------------------------------------------------------------------------
 
 
-def sc1_health_and_thread_start(client: httpx.Client, ctx: dict) -> str:
-    r = client.get("/health")
+async def sc1_health_and_thread_start(client: httpx.AsyncClient, ctx: dict) -> str:
+    r = await client.get("/health")
     _require(r.status_code == 200, f"GET /health returned {r.status_code}: {r.text[:200]}")
     payload = r.json()
     _require(payload.get("status") == "ok", f"/health payload unexpected: {payload}")
     ctx["graph_mode"] = str(payload.get("graph", "unknown"))
 
     ticket = ctx["ticket"]
-    r = client.post("/threads", json={"ticket": ticket})
+    r = await client.post("/threads", json={"ticket": ticket})
     _require(r.status_code == 200, f"POST /threads returned {r.status_code}: {r.text[:200]}")
     body = r.json()
     thread_id = body.get("thread_id")
@@ -138,9 +139,9 @@ def _assert_citations(spec: dict, where: str) -> list[str]:
     return doc_ids
 
 
-def _rag_golden_question(client: httpx.Client, ctx: dict, index: int) -> str:
+async def _rag_golden_question(client: httpx.AsyncClient, ctx: dict, index: int) -> str:
     question, expected_doc = ctx["golden"][index]
-    r = client.post("/threads", json={"ticket": question})
+    r = await client.post("/threads", json={"ticket": question})
     _require(r.status_code == 200, f"POST /threads returned {r.status_code}: {r.text[:200]}")
     body = r.json()
     thread_id = body.get("thread_id")
@@ -155,12 +156,12 @@ def _rag_golden_question(client: httpx.Client, ctx: dict, index: int) -> str:
     )
 
 
-def sc2_rag_golden_question(client: httpx.Client, ctx: dict) -> str:
-    return _rag_golden_question(client, ctx, 0)
+async def sc2_rag_golden_question(client: httpx.AsyncClient, ctx: dict) -> str:
+    return await _rag_golden_question(client, ctx, 0)
 
 
-def sc3_second_golden_question(client: httpx.Client, ctx: dict) -> str:
-    detail = _rag_golden_question(client, ctx, 1)
+async def sc3_second_golden_question(client: httpx.AsyncClient, ctx: dict) -> str:
+    detail = await _rag_golden_question(client, ctx, 1)
     prev = ctx.get("golden1_thread_id")
     curr = ctx.get("golden2_thread_id")
     _require(
@@ -170,12 +171,12 @@ def sc3_second_golden_question(client: httpx.Client, ctx: dict) -> str:
     return detail + "; new thread confirmed"
 
 
-def sc4_multiturn_continuity(client: httpx.Client, ctx: dict) -> str:
+async def sc4_multiturn_continuity(client: httpx.AsyncClient, ctx: dict) -> str:
     thread_id = ctx.get("thread_id")
     _require(isinstance(thread_id, str) and thread_id, "S4 needs S1's thread_id")
     ticket = ctx["ticket"]
     marker = uuid.uuid4().hex[:8]  # unique marker findable in traces' input values
-    r = client.post(f"/threads/{thread_id}/messages", json={"content": f"{FOLLOW_UP} [qa:{marker}]"})
+    r = await client.post(f"/threads/{thread_id}/messages", json={"content": f"{FOLLOW_UP} [qa:{marker}]"})
     _require(
         r.status_code == 200,
         f"POST /threads/{{id}}/messages returned {r.status_code}: {r.text[:200]} "
@@ -197,8 +198,8 @@ def sc4_multiturn_continuity(client: httpx.Client, ctx: dict) -> str:
     )
 
 
-def sc5_malformed_payload(client: httpx.Client, ctx: dict) -> str:
-    r = client.post("/threads", json={})
+async def sc5_malformed_payload(client: httpx.AsyncClient, ctx: dict) -> str:
+    r = await client.post("/threads", json={})
     _require(
         r.status_code == 422,
         f"expected 422 for a payload missing 'ticket', got {r.status_code}: {r.text[:200]}",
@@ -217,10 +218,10 @@ def sc5_malformed_payload(client: httpx.Client, ctx: dict) -> str:
     return f"422 with Pydantic error detail (locs={locs}, msgs={msgs})"
 
 
-def sc6_close_thread(client: httpx.Client, ctx: dict) -> str:
+async def sc6_close_thread(client: httpx.AsyncClient, ctx: dict) -> str:
     thread_id = ctx.get("thread_id")
     _require(isinstance(thread_id, str) and thread_id, "S6 needs S1's thread_id")
-    r = client.post(f"/threads/{thread_id}/close")
+    r = await client.post(f"/threads/{thread_id}/close")
     _require(r.status_code == 200, f"POST /threads/{{id}}/close returned {r.status_code}: {r.text[:200]}")
     spec = r.json().get("spec") or {}
     detail = "close accepted (200); final spec returned"
@@ -275,8 +276,8 @@ def load_golden(path: Path = GOLDEN_PATH, needed: int = 2) -> list[tuple[str, st
     return cases
 
 
-def run_scenarios(
-    client: httpx.Client,
+async def run_scenarios(
+    client: httpx.AsyncClient,
     *,
     golden: list[tuple[str, str]] | None = None,
     ticket: str | None = None,
@@ -295,7 +296,7 @@ def run_scenarios(
     for sid, name, fn in SCENARIOS:
         started = _utcnow()
         try:
-            detail = str(fn(client, ctx))
+            detail = str(await fn(client, ctx))
             results.append(ScenarioResult(sid, name, PASS, detail))
         except Exception as exc:  # noqa: BLE001 — any failure is a scenario FAIL
             results.append(ScenarioResult(sid, name, FAIL, str(exc)))
@@ -454,8 +455,6 @@ def render_summary(results: list[ScenarioResult], trace_report: TraceReport | No
 
 def _selftest() -> tuple[list[ScenarioResult], list[tuple[str, dt.datetime, dt.datetime]], TraceReport]:
     """Run the scenarios in-process against the fake graph (no server, no creds)."""
-    import asyncio
-
     # config.py reads this at import time: make /health report the fake mode
     # (and thus enable the fake-specific assertions in S6).
     os.environ.setdefault("SPEC_REFINERY_GRAPH", "fake")
@@ -465,8 +464,8 @@ def _selftest() -> tuple[list[ScenarioResult], list[tuple[str, dt.datetime, dt.d
     from checkpoint import close_checkpointer, create_checkpointer
     from graph import build_graph
 
-    async def _build():
-        cp = create_checkpointer(
+    async def _run():
+        checkpointer = create_checkpointer(
             Path(tempfile.mkdtemp(prefix="qa-system-selftest-")) / "qa.sqlite"
         )
         graph = build_graph(
@@ -474,23 +473,24 @@ def _selftest() -> tuple[list[ScenarioResult], list[tuple[str, dt.datetime, dt.d
             retriever=fake_retriever,
             intake=fake_intake,
             writer=fake_writer,
-            checkpointer=cp,
+            checkpointer=checkpointer,
         )
-        return graph, cp
+        app.dependency_overrides[get_graph] = lambda: graph
+        transport = httpx.ASGITransport(app=app)
+        try:
+            # In-process ASGI transport (no starlette TestClient): entering the
+            # lifespan runs app startup/shutdown exactly as TestClient did.
+            async with app.router.lifespan_context(app):
+                async with httpx.AsyncClient(
+                    transport=transport, base_url="http://testserver"
+                ) as client:
+                    return await run_scenarios(client)
+        finally:
+            app.dependency_overrides.clear()
+            # aiosqlite's worker thread is non-daemon: close it or the process hangs.
+            await close_checkpointer(checkpointer)
 
-    graph, checkpointer = asyncio.run(_build())
-    app.dependency_overrides[get_graph] = lambda: graph
-    try:
-        # TestClient = httpx over the ASGI transport (httpx 0.28 dropped sync
-        # ASGITransport context-manager support; TestClient handles it).
-        from fastapi.testclient import TestClient
-
-        with TestClient(app) as client:
-            results, windows = run_scenarios(client)
-    finally:
-        app.dependency_overrides.clear()
-        # aiosqlite's worker thread is non-daemon: close it or the process hangs.
-        asyncio.run(close_checkpointer(checkpointer))
+    results, windows = asyncio.run(_run())
     trace = TraceReport(
         SKIP,
         "--selftest runs in-process against the fake graph; no Phoenix spans are "
@@ -531,8 +531,14 @@ def main(argv: list[str] | None = None) -> int:
     else:
         print(f"mode: live API at {args.base_url} (server must already be running)\n")
         timeout = float(os.getenv("QA_HTTP_TIMEOUT", "120.0"))
-        with httpx.Client(base_url=args.base_url, timeout=timeout) as client:
-            results, windows = run_scenarios(client)
+
+        async def _run_live():
+            async with httpx.AsyncClient(
+                base_url=args.base_url, timeout=timeout
+            ) as client:
+                return await run_scenarios(client)
+
+        results, windows = asyncio.run(_run_live())
         if args.skip_traces:
             trace_report = TraceReport(SKIP, "trace check disabled with --skip-traces.")
         else:

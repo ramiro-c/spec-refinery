@@ -1,16 +1,17 @@
 """System-evidence test runner (qa_system.py) against the fake graph.
 
-Uses an httpx ASGI transport (in-process, no server). The checkpointer lives
-in a tmp dir and is explicitly closed: the aiosqlite worker thread is
+Drives the app in-process through ``httpx.ASGITransport`` instead of
+``fastapi.testclient`` (importing starlette's TestClient module trips an
+upstream anyio ``BlockingPortal`` deprecation warning). Entering the router's
+lifespan context keeps app startup/shutdown running. The checkpointer lives in
+a tmp dir and is explicitly closed: the aiosqlite worker thread is
 non-daemon, so leaving it open keeps pytest alive.
 """
 
 from __future__ import annotations
 
-import asyncio
-
+import httpx
 import pytest
-from fastapi.testclient import TestClient
 
 from agents.fakes import fake_intake, fake_retriever, fake_supervisor, fake_writer
 from checkpoint import close_checkpointer, create_checkpointer
@@ -20,36 +21,37 @@ import qa_system
 from qa_system import PASS, TraceReport, compute_exit_code, render_summary, run_scenarios, sc5_malformed_payload
 
 
-def _build_test_graph(tmp_path):
-    async def _build():
-        cp = create_checkpointer(tmp_path / "qa-system-test.sqlite")
-        return build_graph(
-            supervisor=fake_supervisor,
-            retriever=fake_retriever,
-            intake=fake_intake,
-            writer=fake_writer,
-            checkpointer=cp,
-        )
-
-    return asyncio.run(_build())
+async def _build_test_graph(tmp_path):
+    cp = create_checkpointer(tmp_path / "qa-system-test.sqlite")
+    return build_graph(
+        supervisor=fake_supervisor,
+        retriever=fake_retriever,
+        intake=fake_intake,
+        writer=fake_writer,
+        checkpointer=cp,
+    )
 
 
 @pytest.fixture
-def asgi_client(tmp_path):
-    """In-process client (TestClient = httpx over the ASGI transport)."""
-    graph = _build_test_graph(tmp_path)
+async def asgi_client(tmp_path):
+    """In-process client (AsyncClient over the ASGI transport)."""
+    graph = await _build_test_graph(tmp_path)
     from app import app, get_graph
 
     app.dependency_overrides[get_graph] = lambda: graph
-    with TestClient(app) as client:
-        yield client
+    transport = httpx.ASGITransport(app=app)
+    async with app.router.lifespan_context(app):
+        async with httpx.AsyncClient(
+            transport=transport, base_url="http://testserver"
+        ) as client:
+            yield client
     app.dependency_overrides.clear()
     # Non-daemon aiosqlite worker: close it or pytest never exits.
-    asyncio.run(close_checkpointer(graph.checkpointer))
+    await close_checkpointer(graph.checkpointer)
 
 
-def test_qa_system_scenarios_all_pass_on_fake_graph(asgi_client: TestClient):
-    results, windows = run_scenarios(asgi_client)
+async def test_qa_system_scenarios_all_pass_on_fake_graph(asgi_client: httpx.AsyncClient):
+    results, windows = await run_scenarios(asgi_client)
     by_id = {r.id: r for r in results}
     assert set(by_id) == {"S1", "S2", "S3", "S4", "S5", "S6"}
     for sid in ("S1", "S2", "S3", "S4", "S5", "S6"):
@@ -69,25 +71,29 @@ def test_qa_system_scenarios_all_pass_on_fake_graph(asgi_client: TestClient):
     assert compute_exit_code(results, trace) == 0
 
 
-def test_sc5_malformed_payload_unit(asgi_client: httpx.Client):
-    detail = sc5_malformed_payload(asgi_client, ctx={})
+async def test_sc5_malformed_payload_unit(asgi_client: httpx.AsyncClient):
+    detail = await sc5_malformed_payload(asgi_client, ctx={})
     assert "422" in detail
     assert "ticket" in detail
 
 
-def test_sc5_malformed_payload_with_testclient(tmp_path):
-    """Same scenario exercised through FastAPI's TestClient."""
-    graph = _build_test_graph(tmp_path)
+async def test_sc5_malformed_payload_with_asgi_transport(tmp_path):
+    """Same scenario exercised directly through the in-process ASGI transport."""
+    graph = await _build_test_graph(tmp_path)
     from app import app, get_graph
 
     app.dependency_overrides[get_graph] = lambda: graph
+    transport = httpx.ASGITransport(app=app)
     try:
-        with TestClient(app) as client:
-            detail = sc5_malformed_payload(client, ctx={})
+        async with app.router.lifespan_context(app):
+            async with httpx.AsyncClient(
+                transport=transport, base_url="http://testserver"
+            ) as client:
+                detail = await sc5_malformed_payload(client, ctx={})
         assert "422" in detail
     finally:
         app.dependency_overrides.clear()
-        asyncio.run(close_checkpointer(graph.checkpointer))
+        await close_checkpointer(graph.checkpointer)
 
 
 def test_verify_traces_langsmith_active_is_not_applicable(monkeypatch):
