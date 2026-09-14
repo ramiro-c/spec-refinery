@@ -112,6 +112,7 @@ async def run_turn(
             "citations": [],
             "questions": [],
             "decisiones": [],
+            "clasificaciones": [],
             # Per-turn flag; ``assessment`` deliberately survives the turn so an
             # explicit close still reports the last honest verdict.
             "grilled": False,

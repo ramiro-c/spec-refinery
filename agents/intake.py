@@ -58,6 +58,10 @@ How you work:
   definition gives a term a benign meaning, state it and ask what the PM meant.
   If the definition does not settle the intent, ask instead of assuming a benign
   reading or conceding a conflict.
+- Declare a type for EVERY retrieved document, one entry each in
+  `clasificaciones`: "choque" when the request genuinely contradicts that rule,
+  "contexto" when the document informs the request without being contradicted.
+  Use the exact `document_id` you were given; never invent one.
 - Ground every challenge in the citations you were given. Do not invent rules
   that are not cited.
 - Read the whole transcript and the decisions already recorded in the spec.
@@ -130,6 +134,7 @@ async def interrogate(state: RefineryState, llm: BaseChatModel) -> dict:
     update: dict = {
         "questions": preguntas,
         "decisiones": list(verdict.decisiones),
+        "clasificaciones": list(verdict.clasificaciones),
         "assessment": SpecStatus(
             se_puede_cerrar=verdict.se_puede_cerrar,
             vaguedad=verdict.vaguedad,

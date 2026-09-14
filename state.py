@@ -4,7 +4,7 @@ from typing import Literal
 
 from langgraph.graph import MessagesState
 
-from schemas import Citation, Decision, SpecDocument, SpecStatus
+from schemas import Citation, Decision, DocumentAssessment, SpecDocument, SpecStatus
 
 NextAgent = Literal["retriever", "intake", "FINISH"]
 
@@ -16,6 +16,9 @@ class RefineryState(MessagesState):
     # Settled this round; the writer folds them into the spec, which is what
     # persists and what the interrogator reads back as "do not re-open".
     decisiones: list[Decision]
+    # The interrogator's per-document verdict for this turn; the writer
+    # intersects it with the citations to derive real choques.
+    clasificaciones: list[DocumentAssessment]
     # The interrogator's verdict for this thread; the writer copies it into the
     # spec instead of recomputing a score of its own.
     assessment: SpecStatus | None
@@ -43,6 +46,7 @@ def initial_fields(ticket: str, *, close_requested: bool = False) -> dict:
         "citations": [],
         "questions": [],
         "decisiones": [],
+        "clasificaciones": [],
         "assessment": None,
         "grilled": False,
         "round_count": 0,

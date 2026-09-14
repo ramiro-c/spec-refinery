@@ -12,6 +12,12 @@ class Citation(BaseModel):
     title: str = ""
     excerpt: str = ""
 
+class DocumentAssessment(BaseModel):
+    """The interrogator's per-document verdict for one retrieved rule."""
+
+    document_id: str
+    tipo: Literal["choque", "contexto"]
+
 class AcceptanceCriterion(BaseModel):
     dado: str = ""
     cuando: str = ""
@@ -66,6 +72,14 @@ class Interrogation(BaseModel):
         description="0 when nothing is left to clarify, 10 for a one-line wish.",
     )
     razon: str = Field(description="Why, in one sentence, in Spanish.")
+    clasificaciones: list[DocumentAssessment] = Field(
+        default_factory=list,
+        description=(
+            "One entry per document retrieved this turn: \"choque\" when the "
+            "request genuinely contradicts that rule, \"contexto\" when the "
+            "document informs the request without being contradicted."
+        ),
+    )
 
 
 class Decision(BaseModel):
@@ -90,6 +104,7 @@ class SpecDocument(BaseModel):
     pedido: str
     que_entendimos: str = ""
     choques: list[Citation] = Field(default_factory=list)
+    contexto: list[Citation] = Field(default_factory=list)
     decisiones: list[Decision] = Field(default_factory=list)
     servicios: list[str] = Field(default_factory=list)
     criterios: list[AcceptanceCriterion] = Field(default_factory=list)

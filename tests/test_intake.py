@@ -277,3 +277,60 @@ def test_close_flag_is_answered_before_any_quality_judgement():
     from schemas import Interrogation
 
     assert list(Interrogation.model_fields)[0] == "human_wants_close"
+
+
+async def test_the_prompt_requires_one_declaration_per_retrieved_document():
+    """The prompt demands a choque/contexto type for every retrieved document."""
+    capturar: dict = {}
+    llm = _fake_llm(
+        {
+            "preguntas": [],
+            "se_puede_cerrar": False,
+            "vaguedad": 0,
+            "razon": "x",
+        },
+        capturar=capturar,
+    )
+    await interrogate({**initial_fields(CYBER_TICKET)}, llm)
+
+    prompt = capturar["mensajes"][0].content
+    assert "Declare a type for EVERY retrieved document" in prompt
+    assert "clasificaciones" in prompt
+    assert "never invent one" in prompt
+
+
+async def test_interrogator_emits_the_per_document_classification():
+    """A declaration per retrieved document travels out in the node update."""
+    llm = _fake_llm(
+        {
+            "preguntas": [],
+            "se_puede_cerrar": False,
+            "vaguedad": 3,
+            "razon": "x",
+            "clasificaciones": [
+                {"document_id": "adr-cart-price.md", "tipo": "choque"},
+                {"document_id": "spec-cyber-banner.md", "tipo": "contexto"},
+            ],
+        }
+    )
+    out = await interrogate({**initial_fields(CYBER_TICKET)}, llm)
+
+    assert [(c.document_id, c.tipo) for c in out["clasificaciones"]] == [
+        ("adr-cart-price.md", "choque"),
+        ("spec-cyber-banner.md", "contexto"),
+    ]
+
+
+async def test_interrogator_defaults_clasificaciones_to_empty():
+    """A model that classifies nothing must not fabricate declarations."""
+    llm = _fake_llm(
+        {
+            "preguntas": ["¿Alcance?"],
+            "se_puede_cerrar": False,
+            "vaguedad": 2,
+            "razon": "x",
+        }
+    )
+    out = await interrogate({**initial_fields(CYBER_TICKET)}, llm)
+
+    assert out["clasificaciones"] == []
