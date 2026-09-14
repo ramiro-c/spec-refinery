@@ -197,17 +197,25 @@ def _render_citation(citation: dict) -> None:
 
 
 def _render_spec(spec: dict) -> None:
-    """Renderiza las 7 cajas del SpecDocument."""
+    """Renderiza las 8 cajas del SpecDocument."""
     st.subheader("Pedido")
     st.write(spec.get("pedido") or "—")
 
     st.subheader("Qué entendimos")
     st.write(spec.get("que_entendimos") or "—")
 
-    st.subheader("Choques")
+    st.subheader("Choques reales")
     choques = spec.get("choques") or []
     if choques:
         for citation in choques:
+            _render_citation(citation)
+    else:
+        st.write("—")
+
+    st.subheader("Contexto recuperado")
+    contexto = spec.get("contexto") or []
+    if contexto:
+        for citation in contexto:
             _render_citation(citation)
     else:
         st.write("—")
@@ -270,6 +278,11 @@ def _render_intro() -> None:
         "choca con una regla, te lo planta con el documento en la mano — y "
         "podés ganarle: si decidís cambiar esa regla, lo anota como decisión "
         "en vez de seguir preguntando."
+    )
+    st.markdown(
+        "En el panel, **Choques reales** junta sólo las reglas que tu pedido "
+        "contradice de verdad; **Contexto recuperado** muestra lo que el RAG "
+        "trajo para entender el pedido, sin tratarlo como contradicción."
     )
     st.markdown("**Reglas del juego**")
     st.markdown(

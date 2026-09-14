@@ -32,6 +32,8 @@ class _FakeStreamlit:
         )
         self.buttons: list[str] = []
         self.captions: list[str] = []
+        self.subheaders: list[str] = []
+        self.events: list[tuple[str, str]] = []
         self.reruns = 0
 
     # Layout / context managers -------------------------------------------
@@ -54,14 +56,15 @@ class _FakeStreamlit:
     def title(self, *args, **kwargs):
         pass
 
-    def subheader(self, *args, **kwargs):
-        pass
+    def subheader(self, text="", *args, **kwargs):
+        self.subheaders.append(str(text))
+        self.events.append(("subheader", str(text)))
 
     def write(self, *args, **kwargs):
         pass
 
-    def markdown(self, *args, **kwargs):
-        pass
+    def markdown(self, text="", *args, **kwargs):
+        self.events.append(("markdown", str(text)))
 
     def error(self, *args, **kwargs):
         pass
@@ -191,3 +194,67 @@ def test_assistant_reply_skips_blank_questions():
     assert "Necesito aclarar el pedido." in text
     assert "1. ¿Alcance?" in text
     assert "2." not in text
+
+
+def test_assistant_reply_does_not_announce_context_as_a_clash():
+    """The lead keys off real `choques`; a document in `contexto` is silent."""
+    pregunta = "¿Cuándo se reserva el stock? (adr-stock-reserve.md)"
+    context_only = {
+        "preguntas": [pregunta],
+        "choques": [],
+        "contexto": [
+            {
+                "document_id": "adr-stock-reserve.md",
+                "title": "El stock se reserva al confirmar",
+            }
+        ],
+        "estado": {"se_puede_cerrar": False, "vaguedad": 3, "razon": "contexto"},
+    }
+    text = _assistant_reply(context_only)
+    assert "Hay un choque" not in text
+    assert "Necesito aclarar el pedido." in text
+
+    same_doc_as_clash = {**context_only, "choques": context_only["contexto"]}
+    assert "Hay un choque con El stock se reserva al confirmar." in _assistant_reply(
+        same_doc_as_clash
+    )
+
+
+def test_render_spec_separates_clashes_from_context(monkeypatch):
+    """Real clashes render under one header, retrieved context under another."""
+    fake = _FakeStreamlit()
+    monkeypatch.setattr(ui, "st", fake)
+    spec = {
+        "pedido": "checkout sin carrito",
+        "choques": [
+            {
+                "document_id": "adr-cart-price.md",
+                "title": "El precio se cierra en el carrito",
+            }
+        ],
+        "contexto": [
+            {
+                "document_id": "adr-stock-reserve.md",
+                "title": "El stock se reserva al confirmar",
+            }
+        ],
+    }
+    ui._render_spec(spec)
+
+    assert "Choques reales" in fake.subheaders
+    assert "Contexto recuperado" in fake.subheaders
+
+    clash_header = fake.events.index(("subheader", "Choques reales"))
+    context_header = fake.events.index(("subheader", "Contexto recuperado"))
+    clash_doc = next(
+        index
+        for index, (kind, text) in enumerate(fake.events)
+        if kind == "markdown" and "adr-cart-price.md" in text
+    )
+    context_doc = next(
+        index
+        for index, (kind, text) in enumerate(fake.events)
+        if kind == "markdown" and "adr-stock-reserve.md" in text
+    )
+    assert clash_header < clash_doc < context_header
+    assert context_header < context_doc
