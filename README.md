@@ -69,7 +69,7 @@ Cada nodo corre **como mucho una vez por turno**: volver a interrogar sobre el m
 | Nodo | Rol |
 |------|-----|
 | **Supervisor** | Rutea según rúbrica dura; no busca ni escribe. |
-| **Retriever** | RAG híbrido (BM25 + embeddings + RRF) sobre Chroma. El BM25 es local (`rank_bm25`, `LocalBM25Retriever`): `langchain-community` ya no es dependencia. |
+| **Retriever** | RAG híbrido (BM25 + embeddings + RRF) sobre Chroma. El BM25 es local (`rank_bm25`, `LocalBM25Retriever`). |
 | **Intake** (interrogador) | LLM: lee el ticket, todo el transcript y las reglas recuperadas. Interpreta el pedido contra las definiciones recuperadas (glosario primero) antes de declarar una contradicción, y decide qué preguntar (hasta 3 por ronda, 5 rondas) y si la spec ya se puede cerrar. Declara CADA documento recuperado como `clash` o `context` en `classifications` (un `DocumentAssessment` por documento: `document_id` + `kind`). Sin catálogo de preguntas ni scoring por palabras clave. |
 | **Writer** | Reescribe `understanding`, `criteria` y `services`, y deriva `clashes` y `context` de las declaraciones del interrogador: `clashes` son los choques reales, se acumulan en el hilo, se deduplican por `document_id` y sobreviven al cierre; `context` es lo recuperado en el turno (se arrastra el anterior si el turno no trajo nada). No puntúa: el veredicto (`status`) es del interrogador. Deja `closed` en la spec. |
 
@@ -135,7 +135,7 @@ Diagramas: usar Archify del repo (`.agents/skills/archify`). La imagen estática
 ```
 
 La suite actual: **106 passed, 0 warnings**. Los tests de API y de `qa_system`
-manejan la app con `httpx.ASGITransport` (no `fastapi.testclient`), y
+manejan la app con `httpx.ASGITransport`, y
 `qa_system.py` es async (corre con `asyncio.run`).
 
 ## System evidence tests
