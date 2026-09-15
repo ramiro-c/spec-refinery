@@ -72,7 +72,6 @@ Variables útiles:
 | `SPEC_REFINERY_API` | `http://127.0.0.1:8000` | URL de la API para Streamlit |
 | `SPEC_REFINERY_GRAPH` | `live` | Modo del grafo: `live` (LLM + RAG) o `fake` (nodos dummy) |
 | `LLM_PROVIDER` | `gemini` | `gemini` (Vertex/ADC) u `openrouter` |
-| `SUPERVISOR_MODEL` | default del proveedor | Modelo del supervisor (`openrouter` o override por rol) |
 | `INTERROGATOR_MODEL` | default del proveedor | Modelo del interrogador (`openrouter` o override por rol) |
 | `WRITER_MODEL` | default del proveedor | Modelo del writer (`openrouter` o override por rol) |
 | `EMBEDDING_MODEL` | `sentence-transformers/all-MiniLM-L6-v2` | Modelo de embeddings local |
@@ -91,9 +90,11 @@ mensaje del PM
 
 Cada nodo corre **como mucho una vez por turno**: volver a interrogar sobre el mismo transcript lo único que hace es loopear el grafo.
 
+El supervisor es un **router determinista**: elige el próximo nodo con una rúbrica dura sobre el estado y no llama a ningún modelo. Solo el interrogador y el writer usan LLM.
+
 | Nodo | Rol |
 |------|-----|
-| **Supervisor** | Rutea según rúbrica dura; no busca ni escribe. |
+| **Supervisor** | Router determinista: elige el próximo nodo según la rúbrica dura sobre el estado, sin llamar a un modelo; no busca ni escribe. |
 | **Retriever** | RAG híbrido (BM25 + embeddings + RRF) sobre Chroma. El BM25 es local (`rank_bm25`, `LocalBM25Retriever`). |
 | **Intake** (interrogador) | LLM: lee el ticket, todo el transcript y las reglas recuperadas. Interpreta el pedido contra las definiciones recuperadas (glosario primero) antes de declarar una contradicción, y decide qué preguntar (hasta 3 por ronda, 5 rondas) y si la spec ya se puede cerrar. Declara CADA documento recuperado como `clash` o `context` en `classifications` (un `DocumentAssessment` por documento: `document_id` + `kind`). Sin catálogo de preguntas ni scoring por palabras clave. |
 | **Writer** | Reescribe `understanding`, `criteria` y `services`, y deriva `clashes` y `context` de las declaraciones del interrogador: `clashes` son los choques reales, se acumulan en el hilo, se deduplican por `document_id` y sobreviven al cierre; `context` es lo recuperado en el turno (se arrastra el anterior si el turno no trajo nada). No puntúa: el veredicto (`status`) es del interrogador. Deja `closed` en la spec. |
@@ -159,7 +160,7 @@ Diagramas: usar Archify del repo (`.agents/skills/archify`). La imagen estática
 .venv/bin/pytest tests/ -v
 ```
 
-La suite actual: **106 passed, 0 warnings**. Los tests de API y de `qa_system`
+La suite actual: **127 passed, 0 warnings**. Los tests de API y de `qa_system`
 manejan la app con `httpx.ASGITransport`, y
 `qa_system.py` es async (corre con `asyncio.run`).
 

@@ -53,7 +53,7 @@ def test_openrouter_uses_per_role_defaults(monkeypatch):
     fake, calls = _fake_chat()
     _inject_openrouter(monkeypatch, fake)
 
-    build_chat_model(provider="openrouter", role="supervisor")
+    build_chat_model(provider="openrouter", role="interrogator")
     build_chat_model(provider="openrouter", role="writer")
 
     assert calls[0]["model"] == OPENROUTER_DEFAULT_MODEL
@@ -65,17 +65,14 @@ def test_openrouter_uses_per_role_defaults(monkeypatch):
 def test_openrouter_models_from_env(monkeypatch):
     fake, calls = _fake_chat()
     _inject_openrouter(monkeypatch, fake)
-    monkeypatch.setattr(factory, "SUPERVISOR_MODEL", "test/supervisor:free")
     monkeypatch.setattr(factory, "INTERROGATOR_MODEL", "test/interrogator:free")
     monkeypatch.setattr(factory, "WRITER_MODEL", "test/writer:free")
 
-    build_chat_model(provider="openrouter", role="supervisor")
     build_chat_model(provider="openrouter", role="interrogator")
     build_chat_model(provider="openrouter", role="writer")
 
-    assert calls[0]["model"] == "test/supervisor:free"
-    assert calls[1]["model"] == "test/interrogator:free"
-    assert calls[2]["model"] == "test/writer:free"
+    assert calls[0]["model"] == "test/interrogator:free"
+    assert calls[1]["model"] == "test/writer:free"
 
 
 def test_gemini_shares_one_model(monkeypatch):
@@ -91,7 +88,7 @@ def test_gemini_shares_one_model(monkeypatch):
         genai_module.types = genai_types
         monkeypatch.setitem(sys.modules, "google.genai", genai_module)
 
-    build_chat_model(provider="gemini", role="supervisor")
+    build_chat_model(provider="gemini", role="interrogator")
     build_chat_model(provider="gemini", role="writer")
 
     assert calls[0]["model"] == GEMINI_DEFAULT_MODEL
@@ -124,5 +121,5 @@ def test_build_role_models_openrouter_one_instance_per_role(monkeypatch):
 
     models = build_role_models(provider="openrouter")
 
-    assert set(models) == {"supervisor", "interrogator", "writer"}
-    assert [c["model"] for c in calls] == [OPENROUTER_DEFAULT_MODEL] * 3
+    assert set(models) == {"interrogator", "writer"}
+    assert [c["model"] for c in calls] == [OPENROUTER_DEFAULT_MODEL] * 2

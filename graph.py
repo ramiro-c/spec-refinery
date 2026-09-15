@@ -47,7 +47,7 @@ def build_graph(
         from clients.factory import build_role_models
 
         models = build_role_models()
-        supervisor = supervisor or make_supervisor_node(models["supervisor"])
+        supervisor = supervisor or make_supervisor_node()
         intake = intake or make_intake_node(models["interrogator"])
         writer = writer or make_writer_node(models["writer"])
     if retriever is None:

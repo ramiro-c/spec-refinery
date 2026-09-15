@@ -32,6 +32,5 @@ TOP_K = 5
 EMBEDDING_MODEL = _env_str("EMBEDDING_MODEL", "sentence-transformers/all-MiniLM-L6-v2")
 # Model IDs are configurable (rubric: no hardcoded models). Empty means
 # "use the provider default" resolved in clients/factory.py.
-SUPERVISOR_MODEL = _env_str("SUPERVISOR_MODEL", "")
 INTERROGATOR_MODEL = _env_str("INTERROGATOR_MODEL", "")
 WRITER_MODEL = _env_str("WRITER_MODEL", "")

@@ -54,7 +54,7 @@
       "id": "supervisor",
       "type": "backend",
       "label": "Supervisor",
-      "sublabel": "rúbrica + ruteo",
+      "sublabel": "router determinista",
       "pos": [420, 190],
       "size": [140, 56]
     },
@@ -188,9 +188,9 @@
       "dot": "emerald",
       "title": "Grafo por turno",
       "items": [
-        "Supervisor rutea retriever, intake o writer",
+        "Supervisor rutea sin LLM: retriever, intake o writer",
         "Cada nodo corre como mucho una vez por turno",
-        "Supervisor, intake y writer usan modelos LLM por rol"
+        "Intake y writer usan modelos LLM por rol"
       ]
     },
     {

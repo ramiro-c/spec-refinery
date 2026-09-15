@@ -5,7 +5,7 @@ from typing import Literal
 from pydantic import BaseModel, Field
 
 ProviderName = Literal["gemini", "openrouter"]
-RoleName = Literal["supervisor", "interrogator", "writer"]
+RoleName = Literal["interrogator", "writer"]
 
 class Citation(BaseModel):
     document_id: str

@@ -26,7 +26,6 @@ def fake_supervisor(state: RefineryState) -> dict:
         citations_empty=not state.get("citations"),
         grilled=bool(state.get("grilled")),
         step_count=step,
-        proposed="FINISH",
         close_requested=bool(state.get("close_requested")),
         last_error=state.get("last_error") or "",
     )

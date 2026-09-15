@@ -1,11 +1,11 @@
 """Multi-provider chat model factory (Vertex / OpenRouter).
 
 With ``LLM_PROVIDER=openrouter`` each graph role can use its own model via
-``SUPERVISOR_MODEL`` / ``INTERROGATOR_MODEL`` / ``WRITER_MODEL`` env vars
-(supervisor routes, interrogator grills the PM, writer drafts the spec).
-Gemini shares a single model unless a role env override is set. Model IDs are
-never hardcoded in call sites: defaults live here, env vars (read through
-``config``) always win.
+``INTERROGATOR_MODEL`` / ``WRITER_MODEL`` env vars (the interrogator grills the
+PM, the writer drafts the spec; the supervisor routes deterministically without
+a model). Gemini shares a single model unless a role env override is set. Model
+IDs are never hardcoded in call sites: defaults live here, env vars (read
+through ``config``) always win.
 """
 
 from __future__ import annotations
@@ -18,7 +18,6 @@ from config import (
     GEMINI_API_KEY,
     INTERROGATOR_MODEL,
     LLM_PROVIDER,
-    SUPERVISOR_MODEL,
     WRITER_MODEL,
 )
 from schemas import ProviderName, RoleName
@@ -40,8 +39,6 @@ def _model_for(provider: str, role: RoleName | None, model: str | None) -> str:
     """Resolve the model id: explicit arg > role env override > provider default."""
     if model:
         return model
-    if role == "supervisor" and SUPERVISOR_MODEL:
-        return SUPERVISOR_MODEL
     if role == "interrogator" and INTERROGATOR_MODEL:
         return INTERROGATOR_MODEL
     if role == "writer" and WRITER_MODEL:
@@ -100,15 +97,14 @@ def build_chat_model(
 def build_role_models(
     provider: str | None = None,
 ) -> dict[RoleName, BaseChatModel]:
-    """Three LLMs ready for the graph. OpenRouter differentiates them; gemini doesn't."""
+    """Two LLMs ready for the graph. OpenRouter differentiates them; gemini doesn't."""
     resolved = _normalize_provider(provider or LLM_PROVIDER)
     if resolved == "openrouter":
         return {
-            "supervisor": build_chat_model(provider="openrouter", role="supervisor"),
             "interrogator": build_chat_model(
                 provider="openrouter", role="interrogator"
             ),
             "writer": build_chat_model(provider="openrouter", role="writer"),
         }
     llm = build_chat_model(provider=resolved)
-    return {"supervisor": llm, "interrogator": llm, "writer": llm}
+    return {"interrogator": llm, "writer": llm}
