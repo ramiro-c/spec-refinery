@@ -1,8 +1,8 @@
 """Política de reintentos del grafo.
 
-El grafo no reintenta un nodo por su cuenta: los clientes del modelo ya
-reintentan los fallos transitorios del proveedor (``LLM_MAX_RETRIES``), así que
-un reintento a nivel de nodo multiplicaría el peor caso de un turno.
+El grafo hace un único reintento por nodo (dos intentos en total): los clientes
+del modelo ya reintentan los fallos transitorios del proveedor
+(``LLM_MAX_RETRIES``) y subir ``max_attempts`` alarga el peor caso de un turno.
 """
 
 from __future__ import annotations
@@ -14,8 +14,8 @@ class _UnauthorizedError(Exception):
     """Error de cliente: reintentar no lo arregla."""
 
 
-def test_the_graph_does_not_re_attempt_a_node() -> None:
-    assert NODE_RETRY.max_attempts == 1
+def test_the_graph_re_attempts_a_node_once() -> None:
+    assert NODE_RETRY.max_attempts == 2
 
 
 def test_transient_provider_failures_are_retried_by_the_classifier() -> None:

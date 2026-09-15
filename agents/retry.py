@@ -52,11 +52,11 @@ def is_transient_error(exc: BaseException) -> bool:
 
 
 # Los clientes del modelo ya reintentan los errores transitorios del proveedor
-# (LLM_MAX_RETRIES); el grafo no vuelve a intentar el nodo por su cuenta: un
-# intento por nodo mantiene acotado el peor caso. Subir max_attempts reactiva
-# los reintentos del grafo.
+# (LLM_MAX_RETRIES); el grafo hace un único reintento por nodo (dos intentos en
+# total) para acotar el peor caso de un turno. Subir max_attempts alarga ese
+# peor caso sin cambiar la lógica.
 NODE_RETRY = RetryPolicy(
-    max_attempts=1,
+    max_attempts=2,
     initial_interval=2.0,
     backoff_factor=2.0,
     retry_on=is_transient_error,
