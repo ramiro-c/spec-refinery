@@ -247,6 +247,10 @@ SCENARIOS: tuple[tuple[str, str, object], ...] = (
     ("S6", "close thread (bonus)", sc6_close_thread),
 )
 MANDATORY_IDS = frozenset({"S1", "S2", "S3", "S4", "S5"})
+# S5 sends a malformed payload: FastAPI rejects it with a 422 before the graph
+# runs, so its window cannot contain spans of its own. The span gate applies
+# only to the scenarios that actually execute the graph.
+SPAN_EXEMPT_IDS = frozenset({"S5"})
 
 
 @dataclass
@@ -299,7 +303,10 @@ async def run_scenarios(
             detail = str(await fn(client, ctx))
             results.append(ScenarioResult(sid, name, PASS, detail))
         except Exception as exc:  # noqa: BLE001 — any failure is a scenario FAIL
-            results.append(ScenarioResult(sid, name, FAIL, str(exc)))
+            # Prefix the type so a failure is never reported with a blank detail
+            # (transport errors can carry an empty message).
+            detail = f"{type(exc).__name__}: {exc}"
+            results.append(ScenarioResult(sid, name, FAIL, detail))
         finally:
             windows.append((sid, started, _utcnow()))
     return results, windows
@@ -362,8 +369,11 @@ def verify_phoenix_traces(
         )
 
     client = Client(base_url=phoenix_url)
+    exempt = sorted(sid for sid, _, _ in windows if sid in SPAN_EXEMPT_IDS)
     pending: dict[str, tuple[dt.datetime, dt.datetime]] = {
-        sid: (t0 - TRACE_WINDOW_EPSILON, t1) for sid, t0, t1 in windows
+        sid: (t0 - TRACE_WINDOW_EPSILON, t1)
+        for sid, t0, t1 in windows
+        if sid not in SPAN_EXEMPT_IDS
     }
     per_scenario: dict[str, str] = {}
     last_error = ""
@@ -396,12 +406,16 @@ def verify_phoenix_traces(
         time.sleep(2.0)
 
     if not pending:
-        return TraceReport(
-            PASS,
+        detail = (
             f"Phoenix project '{project}' returned spans for all {len(per_scenario)} "
-            "scenario windows — traces are visible and correlable per scenario.",
-            per_scenario,
+            "graph-running scenario windows — traces are visible and correlable per scenario."
         )
+        if exempt:
+            detail += (
+                f" Span check does not apply to {', '.join(exempt)}: it validates the "
+                "payload, which FastAPI rejects before the graph runs, so it emits no spans."
+            )
+        return TraceReport(PASS, detail, per_scenario)
     missing = ", ".join(sorted(pending))
     detail = (
         f"Phoenix reachable at {phoenix_url} but no spans found for: {missing} "
@@ -530,11 +544,20 @@ def main(argv: list[str] | None = None) -> int:
         results, _windows, trace_report = _selftest()
     else:
         print(f"mode: live API at {args.base_url} (server must already be running)\n")
-        timeout = float(os.getenv("QA_HTTP_TIMEOUT", "120.0"))
+        # A refinement turn runs the whole graph against a live model, and the
+        # retrieval half embeds on CPU, so a single turn can take minutes on a
+        # busy machine. Keep the per-request timeout generous; override it with
+        # QA_HTTP_TIMEOUT.
+        timeout = float(os.getenv("QA_HTTP_TIMEOUT", "300.0"))
 
         async def _run_live():
             async with httpx.AsyncClient(
-                base_url=args.base_url, timeout=timeout
+                base_url=args.base_url,
+                timeout=timeout,
+                # Each turn takes tens of seconds, longer than the server's
+                # keep-alive timeout, so a pooled connection can already be
+                # closed when the next scenario reuses it. Reuse none.
+                limits=httpx.Limits(max_keepalive_connections=0),
             ) as client:
                 return await run_scenarios(client)
 
