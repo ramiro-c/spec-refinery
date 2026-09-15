@@ -12,6 +12,20 @@ def _env_str(name: str, default: str) -> str:
         return default
     return raw.strip()
 
+
+def _env_int(name: str, default: int) -> int:
+    raw = os.getenv(name)
+    if raw is None or not raw.strip():
+        return default
+    return int(raw.strip())
+
+
+def _env_float(name: str, default: float) -> float:
+    raw = os.getenv(name)
+    if raw is None or not raw.strip():
+        return default
+    return float(raw.strip())
+
 GEMINI_API_KEY = os.getenv("GEMINI_API_KEY")
 OPENROUTER_API_KEY = os.getenv("OPENROUTER_API_KEY")
 
@@ -34,3 +48,7 @@ EMBEDDING_MODEL = _env_str("EMBEDDING_MODEL", "sentence-transformers/all-MiniLM-
 # "use the provider default" resolved in clients/factory.py.
 INTERROGATOR_MODEL = _env_str("INTERROGATOR_MODEL", "")
 WRITER_MODEL = _env_str("WRITER_MODEL", "")
+# Per-request timeout (seconds) and bounded SDK retries for every model call:
+# a hung or throttled provider must fail fast instead of leaving a turn open.
+LLM_TIMEOUT_SECONDS = _env_float("LLM_TIMEOUT_SECONDS", 90.0)
+LLM_MAX_RETRIES = _env_int("LLM_MAX_RETRIES", 2)

@@ -17,7 +17,9 @@ from langchain_core.language_models import BaseChatModel
 from config import (
     GEMINI_API_KEY,
     INTERROGATOR_MODEL,
+    LLM_MAX_RETRIES,
     LLM_PROVIDER,
+    LLM_TIMEOUT_SECONDS,
     WRITER_MODEL,
 )
 from schemas import ProviderName, RoleName
@@ -76,6 +78,10 @@ def build_chat_model(
         gemini_kwargs = {
             "model": _model_for("gemini", role, model),
             "temperature": temperature,
+            # ChatGoogleGenerativeAI: timeout is in seconds; max_retries is the
+            # SDK's bounded retry count for transient provider failures.
+            "timeout": LLM_TIMEOUT_SECONDS,
+            "max_retries": LLM_MAX_RETRIES,
         }
         # An explicit (empty) api_key forces the Developer API; leave it unset so
         # GOOGLE_GENAI_USE_VERTEXAI=true routes through Vertex AI with ADC.
@@ -89,6 +95,10 @@ def build_chat_model(
         return ChatOpenRouter(
             model=_model_for("openrouter", role, model),
             temperature=temperature,
+            # langchain-openrouter expects request_timeout in milliseconds; the
+            # config stores seconds. max_retries bounds the SDK's retry window.
+            request_timeout=int(LLM_TIMEOUT_SECONDS * 1000),
+            max_retries=LLM_MAX_RETRIES,
         )
 
     raise ValueError(f"Unsupported provider: {resolved}")

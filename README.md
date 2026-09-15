@@ -72,6 +72,8 @@ Variables útiles:
 | `SPEC_REFINERY_API` | `http://127.0.0.1:8000` | URL de la API para Streamlit |
 | `SPEC_REFINERY_GRAPH` | `live` | Modo del grafo: `live` (LLM + RAG) o `fake` (nodos dummy) |
 | `LLM_PROVIDER` | `gemini` | `gemini` (Vertex/ADC) u `openrouter` |
+| `LLM_TIMEOUT_SECONDS` | `90` | Timeout por request (segundos) de cada llamada de modelo: un proveedor colgado falla rápido en lugar de dejar el turno abierto |
+| `LLM_MAX_RETRIES` | `2` | Reintentos acotados del SDK ante fallos transitorios del proveedor; el error final se propaga como 503 |
 | `INTERROGATOR_MODEL` | default del proveedor | Modelo del interrogador (`openrouter` o override por rol) |
 | `WRITER_MODEL` | default del proveedor | Modelo del writer (`openrouter` o override por rol) |
 | `EMBEDDING_MODEL` | `sentence-transformers/all-MiniLM-L6-v2` | Modelo de embeddings local |
